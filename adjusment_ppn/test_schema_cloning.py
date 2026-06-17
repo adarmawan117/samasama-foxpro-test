@@ -186,7 +186,7 @@ class TestDatabaseExistenceDetection(unittest.TestCase):
         mock_exists.return_value = False
         self.assertFalse(check_target_db_exists({'database': 'missing.db'}, sandbox=True))
 
-    @patch("proses_adjustment_pajak.get_db_connection")
+    @patch("adjustment_ppn_core.schema.cloning.get_db_connection")
     def test_mysql_existence_validation(self, mock_get_conn):
         """Verify MySQL existence check when database exists (succeeds) vs when it throws 1049."""
         # Case 1: database exists (connection succeeds)
@@ -242,7 +242,7 @@ class TestSchemaCloningOperations(unittest.TestCase):
         mock_src_conn.close.assert_called_once()
         mock_tgt_conn.close.assert_called_once()
 
-    @patch("proses_adjustment_pajak.get_db_connection")
+    @patch("adjustment_ppn_core.schema.cloning.get_db_connection")
     def test_clone_full_database_mysql(self, mock_get_conn):
         """Verify MySQL database cloning creates database, retrieves schemas, and copies data."""
         # Setup mocks for server, source, and target connections
@@ -304,9 +304,11 @@ class TestPyQt5SignalTriggers(unittest.TestCase):
         if cls.app is None:
             cls.app = QApplication(sys.argv)
 
+    @patch("proses_adjustment_pajak_gui.check_target_db_exists")
     @patch("proses_adjustment_pajak_gui.test_dual_connection")
-    def test_connection_worker_success(self, mock_test_conn):
+    def test_connection_worker_success(self, mock_test_conn, mock_check_target):
         """Verify TestConnectionWorker emits success signal upon successful test connection."""
+        mock_check_target.return_value = True
         mock_test_conn.return_value = None
         
         worker = TestConnectionWorker(
@@ -331,9 +333,11 @@ class TestPyQt5SignalTriggers(unittest.TestCase):
         self.assertEqual(len(signals_captured), 1)
         self.assertEqual(signals_captured[0], (True, ""))
 
+    @patch("proses_adjustment_pajak_gui.check_target_db_exists")
     @patch("proses_adjustment_pajak_gui.test_dual_connection")
-    def test_connection_worker_failure(self, mock_test_conn):
+    def test_connection_worker_failure(self, mock_test_conn, mock_check_target):
         """Verify TestConnectionWorker emits failure signals with error details."""
+        mock_check_target.return_value = True
         mock_test_conn.side_effect = Exception("Connection Refused")
         
         worker = TestConnectionWorker(
@@ -367,6 +371,7 @@ class TestPyQt5SignalTriggers(unittest.TestCase):
     def test_worker_thread_reduction_success(self, mock_proses_red, mock_check_trx, mock_create_tbl, mock_get_conn, mock_exists):
         """Verify WorkerThread reduction triggers proper progression and finish signals."""
         mock_exists.return_value = True
+        mock_check_trx.return_value = False
         mock_get_conn.return_value = MagicMock()
         mock_proses_red.side_effect = lambda s, t, acc, st, end, val, log_callback: (
             log_callback("Reducing revenue..."),

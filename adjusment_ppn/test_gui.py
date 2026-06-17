@@ -458,7 +458,7 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         WorkerThread.start = mock_start
         
         try:
-            QTest.mouseClick(self.window.btn_proses, Qt.LeftButton)
+            self.window.click_proses()
             self.assertTrue(start_called[0])
             critical_calls = [call for call in self.msg_box_calls if call[0] == "critical"]
             self.assertFalse(any("Invalid database path" in call[2] for call in critical_calls))
@@ -556,7 +556,7 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         # Scenario 1: Empty database path
         self.window.db_path_input.setText("")
         QApplication.processEvents()
-        QTest.mouseClick(self.window.btn_proses, Qt.LeftButton)
+        self.window.click_proses()
         self.assertTrue(any("Invalid database path" in call[2] for call in self.msg_box_calls))
         self.msg_box_calls.clear()
 
@@ -566,14 +566,15 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         QApplication.processEvents()
         self.window.combo_acc.setCurrentIndex(0) # Select Account... (placeholder)
         self.window.target_ppn_input.setText("-1000.0")
-        QTest.mouseClick(self.window.btn_proses, Qt.LeftButton)
+        self.window.click_proses()
         self.assertTrue(any("Please select an account" in call[2] for call in self.msg_box_calls))
         self.msg_box_calls.clear()
 
         # Scenario 3: Valid database and account, but empty target PPN
+        self.window.combo_acc.addItem("Account 001", "001")
         self.window.combo_acc.setCurrentIndex(1) # Account 001
         self.window.target_ppn_input.setText("")
-        QTest.mouseClick(self.window.btn_proses, Qt.LeftButton)
+        self.window.click_proses()
         self.assertTrue(any("Please input target PPN" in call[2] for call in self.msg_box_calls))
 
 

@@ -16,13 +16,16 @@ if parent_dir not in sys.path:
 if __name__ == '__main__':
     # Discover all tests in the current directory matching 'test_*.py'
     suite = unittest.defaultTestLoader.discover(start_dir=os.path.dirname(os.path.abspath(__file__)), pattern='test_*.py')
-    
-    with open('test_run_results.txt', 'w', encoding='utf-8') as f:
-        runner = unittest.TextTestRunner(stream=f, verbosity=2)
-        result = runner.run(suite)
-        f.write(f"\nSUCCESS: {result.wasSuccessful()}\n")
-    
-    # Also output to stdout so we can see the results
-    runner = unittest.TextTestRunner(verbosity=2)
+    from io import StringIO
+    stream = StringIO()
+    runner = unittest.TextTestRunner(stream=stream, verbosity=2)
     result = runner.run(suite)
+    
+    # Write to file
+    with open('test_run_results.txt', 'w', encoding='utf-8') as f:
+        f.write(stream.getvalue())
+        f.write(f"\nSUCCESS: {result.wasSuccessful()}\n")
+        
+    # Output to stdout
+    print(stream.getvalue())
     sys.exit(0 if result.wasSuccessful() else 1)

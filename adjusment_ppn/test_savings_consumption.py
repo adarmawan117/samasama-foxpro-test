@@ -140,6 +140,18 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
             src_conn.execute("PRAGMA foreign_keys = ON;")
             tgt_conn.execute("PRAGMA foreign_keys = ON;")
             
+        # Clear tables just in case they are re-used in loops
+        for conn in (src_conn, tgt_conn):
+            for table in ['barang', 'djual', 'drjual', 'dbeli', 'drbeli', 'tabungan_dan_hutang', 'log_mutasi_tabungan']:
+                conn.execute(f"DROP TABLE IF EXISTS {table}")
+            
+            # Reset sequences
+            try:
+                conn.execute("DELETE FROM sqlite_sequence")
+            except Exception:
+                pass
+            conn.commit()
+            
         create_tables(src_conn)
         create_tables(tgt_conn)
         
@@ -453,11 +465,11 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         source_conn = proses_adjustment_pajak.get_db_connection(sandbox=True, database=self.src_db_path)
         target_conn = proses_adjustment_pajak.get_db_connection(sandbox=True, database=self.tgt_db_path)
         
-        # Run addition adjustment target_ppn = +10,000 (draws exactly 1.0 of BRG001 from savings)
+        # Run addition adjustment target_ppn = +1200 (draws exactly 1.0 of BRG001 from savings)
         proses_adjustment_pajak.proses_penambahan_omset(
             source_conn, target_conn, acc="001", 
             start_date="2026-06-01", end_date="2026-06-30", 
-            target_ppn=10000.0
+            target_ppn=1200.0
         )
         
         # Verify that savings quantity was reduced to 1.0 and a log was created

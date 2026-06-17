@@ -1,3 +1,7 @@
 __pycache__/
 venv/
 python_test.zip
+.agents/
+test_run_results.txt
+*.db
+*.sqlite

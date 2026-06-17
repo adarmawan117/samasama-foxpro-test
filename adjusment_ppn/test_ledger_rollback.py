@@ -48,7 +48,7 @@ class TestLedgerRollback(unittest.TestCase):
         insert_data(tgt_conn, 'djual', initial_djual)
         
         initial_savings = [
-            {"acc": "001", "kode_brg": "BRG001", "qty": 1.0, "tipe": "tambah", "tanggal_dibuat": "2026-06-15"}
+            {"acc": "001", "kode_brg": "BRG001", "qty": 1.0, "tipe": "tambah", "tanggal_dibuat": "2026-05-15"}
         ]
         insert_data(tgt_conn, 'tabungan_dan_hutang', initial_savings)
         
