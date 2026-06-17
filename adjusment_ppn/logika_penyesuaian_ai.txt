@@ -1,0 +1,55 @@
+# Logika Penyesuaian Data PPN & Tabungan Hutang (AI Refactored)
+
+Sistem ini menggunakan mekanisme "Tabungan dan Hutang" untuk mengontrol gap antara Omset Perusahaan (Real) dengan Omset Laporan Pajak, dengan memanipulasi detail item dalam struk tanpa merusak urutan ID Faktur (Header).
+
+## Konsep Dasar Tabel `tabungan_dan_hutang`
+- **Tujuan**: Sebagai "dimensi lain" tempat membuang stok (saat surplus omset) atau meminjam stok fiktif (saat defisit omset), sehingga keseimbangan kuantitas gudang terjaga.
+- **Field Utama**: `id_produk`, `qty` (selalu absolut/positif), `tipe` ('tambah' / 'kurang').
+- **Tipe 'tambah'**: Tabungan aset nyata. Berisi item yang dipotong dari struk (karena omset harus diturunkan).
+- **Tipe 'kurang'**: Hutang fiktif. Berisi item yang "diciptakan" (karena omset harus dinaikkan padahal tidak ada tabungan).
+
+---
+
+## Skenario 1: Omset Real > Omset Pajak (Pengurangan Omset)
+**Tujuan**: Menurunkan total omset di semua struk secara merata dengan target persentase tertentu (misal: membuang 20% total nilai).
+
+1. **Pembebanan Target per Struk**: Hitung target nominal rupiah yang harus dikurangi dari suatu struk (Target = Total Struk * 20%).
+2. **Scanning Detail Item**: Scan dari item terbawah ke atas (atau dicari yang harganya paling mendekati Target).
+3. **Validasi Struk Kosong**:
+   - Jika memotong suatu item menyebabkan struk menjadi Rp 0 (atau item terakhir di struk tersebut), **ABAIKAN** item tersebut. Pindah ke item lain.
+4. **Eksekusi Pemotongan**:
+   - Jika ditemukan item yang pas, kurangi `qty`-nya (atau hapus baris detailnya jika qty=1).
+   - Masukkan item yang dipotong ke tabel `tabungan_dan_hutang` dengan `tipe='tambah'`.
+   - *Self-Healing (Balancing Minus)*: Sebelum menambah data dengan tipe 'tambah', cek apakah ada produk yang sama dengan `tipe='kurang'`. Jika ada, lunasi/kurangi dulu yang bertipe 'kurang' tersebut.
+5. **Penanganan Gap**: 
+   - Karena Qty adalah bilangan bulat (integer), hampir pasti nilai yang terpotong tidak sama persis dengan Target Rupiah.
+   - Sisa target rupiah yang belum/gagal dipotong dari struk ini akan dilempar ke variabel global `global_gap` (untuk diakumulasi dan diselesaikan nanti).
+
+---
+
+## Skenario 2: Omset Real < Omset Pajak (Penambahan Omset)
+**Tujuan**: Menaikkan total omset di semua struk secara merata dengan target persentase tertentu (misal: butuh tambahan nilai 20%).
+
+1. **Pembebanan Target per Struk**: Hitung target nominal rupiah yang harus ditambahkan ke dalam suatu struk (Target = Total Struk * 20%).
+2. **Scanning Tabel Tabungan ('tambah')**: 
+   - Sistem membaca tabel `tabungan_dan_hutang` mencari item dengan `tipe='tambah'`.
+   - Harga yang digunakan saat mengkalkulasi nilai tabungan adalah **Harga Terbaru** di tabel Master Barang saat ini (mengabaikan fluktuasi HPP demi target nominal).
+   - Prioritas pencarian:
+     a. Cari produk yang (Harga Terbaru * Qty) == Target.
+     b. Jika tidak ada, cari produk yang (Harga Terbaru * 1,2,3..) == Target.
+     c. Jika tidak ada, cari yang totalnya sedikit di bawah Target dan paling mendekati.
+3. **Eksekusi Penambahan dari Tabungan**:
+   - Kurangi `qty` dari `tabungan_dan_hutang`.
+   - Suntikkan/tambahkan item tersebut ke dalam detail struk.
+4. **Eksekusi "Injeksi Fiktif" (Tabungan Habis)**:
+   - Jika tabel tabungan sudah habis, tapi masih butuh tambahan omset, sistem akan menambah Qty salah satu produk yang sudah ada di dalam struk tersebut (atau mengarang produk dengan perkalian paling mendekati target).
+   - Produk yang qty-nya ditambah ini akan dicatat ke `tabungan_dan_hutang` dengan `tipe='kurang'` (sebagai hutang stok).
+5. **Penanganan Gap**:
+   - Sisa target rupiah yang meleset akibat pembulatan Qty akan dimasukkan ke variabel `global_gap`.
+
+---
+
+## Penyelesaian `global_gap` di Akhir Proses
+- Setelah seluruh struk bulan tersebut diproses, variabel `global_gap` (bisa plus atau minus) akan dievaluasi.
+- Jika `global_gap` cukup besar, sistem melakukan satu kali putaran *scanning* lagi, dan melempar sisa *gap* ini secara acak ke sembarang struk (bukan hanya struk pertama) untuk mengelabui pola.
+- Jika setelah putaran acak masih ada sisa recehan (karena mentok di angka Qty bulat), maka sisa `global_gap` tersebut **diizinkan/diabaikan** (Toleransi selisih minor yang dianggap tidak signifikan).

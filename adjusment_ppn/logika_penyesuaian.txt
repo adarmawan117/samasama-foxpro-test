@@ -1,0 +1,44 @@
+Logika penyesuaian data PPN
+
+1. Ketika PPN perusahaan lebih besar dari PPN yang diberikan oleh pajak (misal aktual 1000 dan dari pajak 800) berarti persentase pengurangannya itu 20% dari PPN yang diinput oleh pajak. 
+Maka semua struk transaksi akan mengalami pengurangan sebesar persentase total tersebut.
+
+Item yang dihilangkan di setiap struk adalah item terakhir/paling bawah.
+
+Item yang dihilangkan akan disimpan ke dalam tabel tabungan. Item di dalam tabungan akan digunakan jika ada total transaksi yang kurang dari PPN yang dikirimkan oleh pajak.
+
+Kolom didalam tabel tabungan adalah id produk dan quantity.
+
+Ketika nanti tabungan digunakan/ditambahkan, akan menggunakan harga terbaru di database saat itu (bukan harga ketika menambah kedalam tabungan).
+Hal ini digunakan agar harganya up to date.
+
+
+2. Ketika nilai real kurang dari PPN yang dikirimkan oleh pajak, akan ada proses penyesuaian sama seperti poin 1 sebesar persentase yang kurang. 
+
+Jika setelah ditambah tabungan masih ada kekurangan harga (data tabungan sudah habis) maka akan dilakukan penjumlahan di quantity salah satu produk. Kalau misalkan setelah penambahan quantity masih ada gap harga, maka diambil gap yang paling dekat dengan target yang diharapkan.
+
+Misal target penambahan 20%.
+Struk 1 : 20.000, maka membutuhkan penambahan sebesar 4000.
+Detail produk:
+nama::harga::qty::total
+Sabun 1000 2 2000
+Baju 10000 1 10.000
+Topi 3000 2 6000
+Sampo 1000 2 2000
+
+Data tabungan:
+nama::harga terbaru::qty::total
+Sikat Gigi 3000 3 9000
+Daster 10.000 2 20.000
+
+Maka tugas program pertama kali akan scan semua data tabungan, kemudian mencari produk dengan total yang sama dengan target 4000.
+Jika tidak ditemukan yang totalnya sama, cari yang harga * qty (1,2,3,4,dst) yang sama. Jika ditemukan, kurangi qty di tabungan tersebut.
+Jika tidak ditemukan, cari yang totalnya dibawah target dan yang paling mendekati target.
+Jika tidak ditemukan, maka kita akan menambah salah satu qty produk dengan perkalian yang paling mendekati target.
+
+Jika setelah diproses ternyata masih ada gap, gap tersebut akan dimasukkan kedalam variabel global bernama gap. Variabel ini akan dijumlahkan dengan gap gap yang lainnya.
+
+Di akhir, jika masih ada total gap, ulangi tahapan scanning dan masukkan di sembarang struk untuk mengelabui kecurigaan jika dimasukkan selalu di struk pertama. Jika setelah proses scanning dan memasukkan kedalam struk selesai tapi masih ada gap, maka gap tersebut diizinkan/tidak apa apa.
+
+3. Logika balancing untuk poin 1. 
+Sebenarnya logikanya mirip mirip seperti poin 2. Bedanya pengurangan qty, bukan penambahan qty. Dan kalau ada yang dikurangi, produk dan qty akan dimasukkan kedalam tabungan.

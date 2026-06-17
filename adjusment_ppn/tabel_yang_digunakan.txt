@@ -1,0 +1,5 @@
+DJUAL (Tabel transaksi Penjualan Real)
+DRJUAL (Tabel transaksi Retur Penjualan)
+DBELI (Tabel transaksi Pembelian / Kulakan)
+DRBELI (Tabel transaksi Retur Pembelian)
+BARANG (Tabel master barang, yang kita -join- menggunakan KODE_BRG semata-mata untuk mengintip kolom PAJAK demi memilah apakah ia PPN, BTKP, atau Lain-lain).
