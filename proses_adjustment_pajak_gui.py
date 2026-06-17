@@ -40,13 +40,24 @@ class TestConnectionWorker(QThread):
 
     def run(self):
         try:
-            target_db = self.target_config.get('database', '')
             is_sandbox = self.sandbox
             
+            # 1. Test Source DB first
+            try:
+                from proses_adjustment_pajak import get_db_connection
+                conn = get_db_connection(sandbox=is_sandbox, **self.source_config)
+                if hasattr(conn, 'close'):
+                    conn.close()
+            except Exception as e:
+                self.finished_signal.emit(False, f"Source DB Error: {str(e)}")
+                return
+            
+            # 2. Check target DB existence
             if not check_target_db_exists(self.target_config, sandbox=is_sandbox):
                 self.db_not_found_signal.emit("Database Target belum ada.")
                 return
 
+            # 3. Test dual connection
             test_dual_connection(self.source_config, self.target_config, sandbox=self.sandbox)
             self.finished_signal.emit(True, "")
         except Exception as e:
