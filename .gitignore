@@ -5,3 +5,6 @@ python_test.zip
 test_run_results.txt
 *.db
 *.sqlite
+DONT_UPLOAD/
+target_db
+*test_run_results*.txt
