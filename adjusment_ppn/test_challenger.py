@@ -324,7 +324,7 @@ class TestPPNAdjustmentGUIAnyConnection(unittest.TestCase):
         # Verify critical error message box was shown
         critical_calls = [call for call in self.msg_box_calls if call[0] == "critical"]
         self.assertTrue(len(critical_calls) > 0)
-        self.assertTrue("Source DB gagal" in critical_calls[0][2] or "Source DB Error" in critical_calls[0][2])
+        self.assertTrue("Gagal Terhubung:" in critical_calls[0][2] or "kesalahan pada koneksi" in critical_calls[0][2])
 
     def test_gui_async_connection_testing_empty_entries(self):
         """Verify that testing connections with empty database inputs triggers a proper error response."""
@@ -354,7 +354,7 @@ class TestPPNAdjustmentGUIAnyConnection(unittest.TestCase):
             self.assertTrue(self.window.btn_test_conn.isEnabled())
             critical_calls = [call for call in self.msg_box_calls if call[0] == "critical"]
             self.assertTrue(len(critical_calls) > 0)
-            self.assertTrue("Source DB gagal" in critical_calls[0][2] or "Source DB Error" in critical_calls[0][2])
+            self.assertTrue("Gagal Terhubung:" in critical_calls[0][2] or "kesalahan pada koneksi" in critical_calls[0][2])
 
 
 if __name__ == '__main__':

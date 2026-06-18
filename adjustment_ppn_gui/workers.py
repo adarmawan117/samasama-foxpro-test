@@ -41,6 +41,19 @@ class TestConnectionWorker(QThread):
         self.target_config = target_config
         self.sandbox = sandbox
 
+    def _translate_db_error(self, err_str, context="Database"):
+        err_str = str(err_str)
+        if "1049" in err_str:
+            return f"Gagal Terhubung: {context} tidak ditemukan di server. Pastikan nama database sudah benar."
+        elif "1045" in err_str:
+            return f"Gagal Terhubung: Akses ditolak untuk {context}. Pastikan Username dan Password sudah benar."
+        elif "2003" in err_str or "2002" in err_str:
+            return f"Gagal Terhubung: Server {context} tidak merespons. Pastikan Host/IP dan Port sudah benar, serta server MySQL sedang menyala."
+        elif "no such table" in err_str:
+            return f"Gagal Terhubung: Struktur tabel pada {context} tidak sesuai atau tabel belum dibuat."
+        else:
+            return f"Terjadi kesalahan pada koneksi {context}:\n{err_str}"
+
     def run(self):
         try:
             is_sandbox = self.sandbox
@@ -52,7 +65,8 @@ class TestConnectionWorker(QThread):
                 if hasattr(conn, 'close'):
                     conn.close()
             except Exception as e:
-                self.finished_signal.emit(False, f"Source DB Error: {str(e)}")
+                friendly_msg = self._translate_db_error(e, "Database Asal (Source)")
+                self.finished_signal.emit(False, friendly_msg)
                 return
             
             # 2. Check target DB existence
@@ -64,7 +78,8 @@ class TestConnectionWorker(QThread):
             test_dual_connection(self.source_config, self.target_config, sandbox=self.sandbox)
             self.finished_signal.emit(True, "")
         except Exception as e:
-            self.finished_signal.emit(False, str(e))
+            friendly_msg = self._translate_db_error(e, "Database Target")
+            self.finished_signal.emit(False, friendly_msg)
 
 class WorkerThread(QThread):
     progress_signal = pyqtSignal(str)
