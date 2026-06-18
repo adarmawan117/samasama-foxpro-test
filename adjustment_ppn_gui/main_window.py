@@ -2,7 +2,8 @@
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QComboBox, QPushButton, 
                              QMessageBox, QDateEdit, QFormLayout, QProgressBar, 
-                             QListWidget, QLineEdit, QFileDialog, QGroupBox, QMenu)
+                             QListWidget, QLineEdit, QFileDialog, QGroupBox, QMenu,
+                             QDesktopWidget)
 from PyQt5.QtCore import Qt, QDate, pyqtSignal
 from PyQt5.QtGui import QFont, QDoubleValidator
 
@@ -33,7 +34,22 @@ class ProsesAdjustmentPajakApp(QMainWindow):
 
     def initUI(self):
         self.setWindowTitle('PPN Tax Adjustment Tool')
-        self.setGeometry(200, 200, 850, 600)
+        
+        # Get available screen geometry (excluding taskbar)
+        desktop = QDesktopWidget()
+        available_geom = desktop.availableGeometry()
+        
+        width = 1000
+        # Leave a small margin for the title bar so it doesn't get pushed off-screen
+        height = available_geom.height() - 80
+        
+        self.resize(width, height)
+        
+        # Center the window using frameGeometry to account for the title bar
+        qr = self.frameGeometry()
+        cp = available_geom.center()
+        qr.moveCenter(cp)
+        self.move(qr.topLeft())
 
         main_widget = QWidget()
         self.CentralWidget = main_widget

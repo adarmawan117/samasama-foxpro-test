@@ -85,7 +85,7 @@ class ProsesOmsetLogic:
                 SUM((d.JUMLAH*d.{hrg_col}*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH)) AS TOT,
                 SUM(((d.JUMLAH*d.{hrg_col}*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH)) * (d.{ppn_col}/100)) AS TOT_PPN
             FROM {source_table} d
-            JOIN BARANG b ON d.KODE_BRG = b.KODE_BRG
+            LEFT JOIN BARANG b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
             WHERE d.TGL_{'BELI' if is_beli else 'JUAL'} BETWEEN %s AND %s
             """
             params = [tgl1, tgl2]
