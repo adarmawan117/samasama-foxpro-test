@@ -70,3 +70,9 @@ Sistem ini bekerja layaknya sebuah tim pencatat keuangan yang menggunakan metode
     - **a. Berbagi Celengan:** Kelebihan atau sisa barang hasil pemotongan (celengan) dari cabang A1 dapat secara otomatis dipakai untuk menambal kekurangan target di nota cabang A3, begitu pula sebaliknya.
     - **b. Target Gabungan:** Anda hanya perlu memasukkan satu angka target pajak, dan sistem akan membaginya secara adil ke kedua cabang sesuai besar omset masing-masing.
     - **c. Penanda Log:** Pada hasil export laporan akhir (CSV), setiap baris tindakan akan diberi penanda `[A1]` atau `[A3]` agar Anda mudah melacak dari cabang mana transaksi tersebut berasal.
+
+### 12. Aturan Prioritas A1 untuk Celengan Barang (A1 Priority Rule)
+12. Demi menjaga konsistensi pelaporan pajak barang retail dan grosir, sistem menerapkan aturan prioritas untuk akun retail A1 atas akun grosir A3:
+    - **a. Prioritas Akun A1:** Sebelum menyimpan data celengan baru (`tambah`), catatan hutang (`kurang`), atau melakukan suntikan fiktif dari celengan barang, sistem akan memeriksa tabel master barang. Jika kode barang (`KODE_BRG`) tersebut terdaftar di bawah akun `A1`, maka mutasi celengan barang tersebut wajib dicatat menggunakan akun `ACC = 'A1'`, meskipun nota transaksi yang sedang diproses berasal dari akun grosir `A3`.
+    - **b. Fallback Akun Asal:** Jika barang tersebut tidak terdaftar di bawah akun `A1` pada master barang, sistem akan menggunakan akun asal dari nota transaksi tersebut (misalnya tetap dicatat sebagai `A3`).
+    - **c. Pembersihan Bersih (Rollback):** Saat proses pemulihan (rollback) dijalankan untuk akun target tertentu (seperti `A3`), sistem akan mendeteksi barang-barang yang dialihkan ke akun `A1` tersebut secara otomatis. Sistem akan membersihkan riwayat mutasi celengan dan catatan hutang baik yang tercatat di `A3` maupun yang dialihkan ke `A1` untuk barang-barang terkait, sehingga data kembali bersih sempurna tanpa ada catatan celengan yang tertinggal.

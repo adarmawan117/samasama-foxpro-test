@@ -213,6 +213,11 @@ The system supports executing multiple accounts in a single tuple (e.g., `acc=('
 - **Proportional Targeting**: A single global PPN target is entered and proportionally distributed across all participating accounts based on their combined total omset.
 - **Shared Ledger (Cross-Pollination)**: The core module allows cross-pollination of savings. Leftover item deductions (savings or `tambah`) from one account's receipt (e.g., A1) can be used to fulfill the PPN addition targets of another account's receipt (e.g., A3) automatically.
 
+### 5.6 A1 Priority Rule for Savings
+- **Priority Definition**: When recording or drawing savings (deposits, debts, or fictional injections), the system checks the master `barang` table for the product code (`KODE_BRG`).
+- **Overriding Behavior**: If the product code exists under account `A1` in the master table, the savings mutation is recorded under `ACC = 'A1'`, regardless of whether the sales transaction originates from another account (e.g., grosir `A3`). If the product is not registered under `A1`, the system falls back to using the transaction's original account (e.g., `A3`).
+- **Rollback Consistency**: When a rollback is performed for a target account (e.g., `A3`), the rollback engine queries the master `barang` table to identify any product codes redirected to `A1`. It then cleans up both the original target account records and the redirected `A1` savings records and mutation logs associated with those products.
+
 ---
 
 ## 6. Automated Testing Structure

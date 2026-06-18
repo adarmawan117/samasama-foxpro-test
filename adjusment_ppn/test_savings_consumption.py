@@ -544,6 +544,78 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         source_conn.close()
         target_conn.close()
 
+    def test_5_a1_priority_rule(self):
+        """Verify the A1 Priority Rule for savings redirect and rollback."""
+        src_conn, tgt_conn = self.init_databases()
+        
+        # 1. Populate master barang records
+        custom_barang = [
+            # Product existing in both A1 and A3
+            {"ACC": "A1", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju A1", "PAJAK": 1, "HRG_JUAL": 10000.0, "HRG_BELI": 8000.0},
+            {"ACC": "A3", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju A3", "PAJAK": 1, "HRG_JUAL": 10000.0, "HRG_BELI": 8000.0},
+            # Product existing only in A3
+            {"ACC": "A3", "KODE_BRG": "BRG002", "NAMA_BRG": "Sabun A3", "PAJAK": 1, "HRG_JUAL": 10000.0, "HRG_BELI": 8000.0}
+        ]
+        insert_data(src_conn, 'barang', custom_barang)
+        insert_data(tgt_conn, 'barang', custom_barang)
+        
+        # 2. Populate sales (djual) in both
+        initial_djual = [
+            {"TGL_JUAL": "2026-06-15", "F_JUAL": "J_A3_1", "ACC": "A3", "KODE_BRG": "BRG001", "JUMLAH": 5.0, "HRG_BELI": 8000.0, "HRG_JUAL": 10000.0, "F_PPN": 10.0},
+            {"TGL_JUAL": "2026-06-15", "F_JUAL": "J_A3_2", "ACC": "A3", "KODE_BRG": "BRG002", "JUMLAH": 5.0, "HRG_BELI": 8000.0, "HRG_JUAL": 10000.0, "F_PPN": 10.0}
+        ]
+        insert_data(src_conn, 'djual', initial_djual)
+        insert_data(tgt_conn, 'djual', initial_djual)
+        
+        src_conn.close()
+        tgt_conn.close()
+        
+        # Establish sandbox connections
+        source_conn = get_db_connection(sandbox=True, database=self.src_db_path)
+        target_conn = get_db_connection(sandbox=True, database=self.tgt_db_path)
+        
+        # Run reduction adjustment for A3 with target_ppn = -20000
+        global_gap = proses_pengurangan_omset(
+            source_conn, target_conn, acc="A3", 
+            start_date="2026-06-01", end_date="2026-06-30", 
+            target_ppn=-20000.0
+        )
+        
+        # Verify that savings were recorded
+        cursor = target_conn.cursor()
+        cursor.execute("SELECT acc, kode_brg, qty, tipe FROM tabungan_dan_hutang ORDER BY kode_brg")
+        rows = cursor.fetchall()
+        
+        self.assertEqual(len(rows), 2, "Expected exactly two savings records recorded")
+        
+        # Row 1 should be BRG001 (A1 override)
+        # Row 2 should be BRG002 (fallback to A3)
+        acc_1, kode_1, qty_1, tipe_1 = rows[0]
+        acc_2, kode_2, qty_2, tipe_2 = rows[1]
+        
+        self.assertEqual(kode_1, "BRG001")
+        self.assertEqual(acc_1, "A1", "Expected BRG001 savings to be redirected to A1 account")
+        self.assertEqual(qty_1, 1.0)
+        self.assertEqual(tipe_1, "tambah")
+        
+        self.assertEqual(kode_2, "BRG002")
+        self.assertEqual(acc_2, "A3", "Expected BRG002 savings to fallback to A3 account")
+        self.assertEqual(qty_2, 1.0)
+        self.assertEqual(tipe_2, "tambah")
+        
+        # 3. Call rollback on A3
+        rollback_savings_in_range(
+            target_conn, acc="A3", start_date="2026-06-01", end_date="2026-06-30"
+        )
+        
+        # Verify that both savings records were deleted by rollback
+        cursor.execute("SELECT COUNT(*) FROM tabungan_dan_hutang")
+        count = cursor.fetchone()[0]
+        self.assertEqual(count, 0, "Expected all savings records to be deleted by rollback of A3")
+        
+        source_conn.close()
+        target_conn.close()
+
 
 if __name__ == '__main__':
     unittest.main()

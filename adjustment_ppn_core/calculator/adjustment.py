@@ -37,11 +37,17 @@ def settle_debt_with_savings(cursor, acc_tuple, item_acc, kode_brg, best_k, tang
     using any existing savings (tambah) for the same product first.
     If there is remaining debt, record it as 'kurang'.
     """
-    placeholders = ", ".join(["%s"] * len(acc_tuple))
+    # Check if the product exists under A1 in the barang table
+    cursor.execute("SELECT 1 FROM barang WHERE ACC = 'A1' AND KODE_BRG = %s", (kode_brg,))
+    is_a1 = cursor.fetchone() is not None
+    effective_acc_tuple = ('A1',) if is_a1 else acc_tuple
+    effective_item_acc = 'A1' if is_a1 else item_acc
+
+    placeholders = ", ".join(["%s"] * len(effective_acc_tuple))
     # 1. Check if there is a 'tambah' record for this product
     cursor.execute(
         f"SELECT urutan, qty, acc FROM tabungan_dan_hutang WHERE acc IN ({placeholders}) AND kode_brg = %s AND tipe = 'tambah' AND qty > 0.0",
-        (*acc_tuple, kode_brg)
+        (*effective_acc_tuple, kode_brg)
     )
     row = cursor.fetchone()
     if row:
@@ -56,7 +62,7 @@ def settle_debt_with_savings(cursor, acc_tuple, item_acc, kode_brg, best_k, tang
             cursor.execute("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (tambah_urutan,))
             remaining_debt = best_k - tambah_qty
             if remaining_debt > 0:
-                upsert_tabungan_dan_hutang(cursor, item_acc, kode_brg, remaining_debt, 'kurang', tanggal_dibuat=tanggal_dibuat)
+                upsert_tabungan_dan_hutang(cursor, effective_item_acc, kode_brg, remaining_debt, 'kurang', tanggal_dibuat=tanggal_dibuat)
         else:
             # Settle part of savings, reduce 'tambah' quantity
             cursor.execute(
@@ -70,7 +76,7 @@ def settle_debt_with_savings(cursor, acc_tuple, item_acc, kode_brg, best_k, tang
             # No remaining debt to create/update
     else:
         # No savings found, record the entire debt
-        upsert_tabungan_dan_hutang(cursor, item_acc, kode_brg, best_k, 'kurang', tanggal_dibuat=tanggal_dibuat)
+        upsert_tabungan_dan_hutang(cursor, effective_item_acc, kode_brg, best_k, 'kurang', tanggal_dibuat=tanggal_dibuat)
 
 
 def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date, target_ppn, log_callback=None):
@@ -208,9 +214,16 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
                     log_callback(f"[{item['item_acc']}] Action: Reduce Quantity | Receipt: {f_jual} | Product: {item['kode_brg']} | Qty Reduced: {qty_to_reduce} | Value: {val_reduced} | Remaining Gap: {remaining_gap}")
                 
                 # Self-healing and savings
+                # Check A1 Priority Rule
+                target_cursor.execute("SELECT 1 FROM barang WHERE ACC = 'A1' AND KODE_BRG = %s", (item['kode_brg'],))
+                is_a1 = target_cursor.fetchone() is not None
+                effective_acc_tuple = ('A1',) if is_a1 else acc_tuple
+                effective_item_acc = 'A1' if is_a1 else item['item_acc']
+
+                placeholders_eff = ", ".join(["%s"] * len(effective_acc_tuple))
                 target_cursor.execute(
-                    f"SELECT urutan, qty, acc FROM tabungan_dan_hutang WHERE acc IN ({placeholders}) AND kode_brg = %s AND tipe = 'kurang' AND qty > 0.0",
-                    (*acc_tuple, item['kode_brg'])
+                    f"SELECT urutan, qty, acc FROM tabungan_dan_hutang WHERE acc IN ({placeholders_eff}) AND kode_brg = %s AND tipe = 'kurang' AND qty > 0.0",
+                    (*effective_acc_tuple, item['kode_brg'])
                 )
                 debt_row = target_cursor.fetchone()
                 if debt_row:
@@ -220,14 +233,14 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
                         target_cursor.execute("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (debt_urutan,))
                         rem_qty = qty_to_reduce - debt_qty
                         if rem_qty > 0:
-                            upsert_tabungan_dan_hutang(target_cursor, item['item_acc'], item['kode_brg'], rem_qty, 'tambah', tanggal_dibuat=item['tgl_jual'])
+                            upsert_tabungan_dan_hutang(target_cursor, effective_item_acc, item['kode_brg'], rem_qty, 'tambah', tanggal_dibuat=item['tgl_jual'])
                     else:
                         target_cursor.execute(
                             "UPDATE tabungan_dan_hutang SET qty = qty - %s WHERE urutan = %s",
                             (qty_to_reduce, debt_urutan)
                         )
                 else:
-                    upsert_tabungan_dan_hutang(target_cursor, item['item_acc'], item['kode_brg'], qty_to_reduce, 'tambah', tanggal_dibuat=item['tgl_jual'])
+                    upsert_tabungan_dan_hutang(target_cursor, effective_item_acc, item['kode_brg'], qty_to_reduce, 'tambah', tanggal_dibuat=item['tgl_jual'])
                     
     global_gap = target_omset_change + total_actual_reduction
     if log_callback and callable(log_callback):
@@ -291,7 +304,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
         while receipt_target > 0.001:
             # Draw from savings ('tambah')
             target_cursor.execute(
-                f"SELECT urutan, kode_brg, qty, acc FROM tabungan_dan_hutang WHERE acc IN ({placeholders}) AND tipe = 'tambah' AND qty > 0.0",
+                f"SELECT urutan, kode_brg, qty, acc FROM tabungan_dan_hutang WHERE (acc IN ({placeholders}) OR acc = 'A1') AND tipe = 'tambah' AND qty > 0.0",
                 (*acc_tuple,)
             )
             savings = target_cursor.fetchall()
@@ -302,6 +315,17 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                 if abs(s_qty) < 0.001:
                     target_cursor.execute("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (s_urutan,))
                     continue
+
+                # Check A1 Priority Rule
+                source_cursor.execute("SELECT 1 FROM barang WHERE ACC = 'A1' AND KODE_BRG = %s", (s_kode,))
+                is_a1_product = source_cursor.fetchone() is not None
+                if is_a1_product:
+                    if s_acc != 'A1':
+                        continue
+                else:
+                    if s_acc not in acc_tuple:
+                        continue
+
                 source_cursor.execute(
                     "SELECT HRG_JUAL, HRG_BELI, PAJAK FROM barang WHERE ACC = %s AND KODE_BRG = %s",
                     (s_acc, s_kode)
@@ -560,9 +584,16 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                         log_callback(f"[{item_acc}] Action: Distribute Reduction Gap | Receipt: {f_jual} | Product: {kode} | Qty Reduced: {q} | Value: {val_reduced} | Remaining Gap: {-gap_to_reduce}")
                     
                     # Self-healing and savings
+                    # Check A1 Priority Rule
+                    target_cursor.execute("SELECT 1 FROM barang WHERE ACC = 'A1' AND KODE_BRG = %s", (kode,))
+                    is_a1 = target_cursor.fetchone() is not None
+                    effective_acc_tuple = ('A1',) if is_a1 else acc_tuple
+                    effective_item_acc = 'A1' if is_a1 else item_acc
+
+                    placeholders_eff = ", ".join(["%s"] * len(effective_acc_tuple))
                     target_cursor.execute(
-                        f"SELECT urutan, qty, acc FROM tabungan_dan_hutang WHERE acc IN ({placeholders}) AND kode_brg = %s AND tipe = 'kurang' AND qty > 0.0",
-                        (*acc_tuple, kode)
+                        f"SELECT urutan, qty, acc FROM tabungan_dan_hutang WHERE acc IN ({placeholders_eff}) AND kode_brg = %s AND tipe = 'kurang' AND qty > 0.0",
+                        (*effective_acc_tuple, kode)
                     )
                     debt_row = target_cursor.fetchone()
                     if debt_row:
@@ -572,14 +603,14 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                             target_cursor.execute("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (debt_urutan,))
                             rem = q - debt_qty
                             if rem > 0:
-                                upsert_tabungan_dan_hutang(target_cursor, item_acc, kode, rem, 'tambah', tanggal_dibuat=tgl)
+                                upsert_tabungan_dan_hutang(target_cursor, effective_item_acc, kode, rem, 'tambah', tanggal_dibuat=tgl)
                         else:
                             target_cursor.execute(
                                 "UPDATE tabungan_dan_hutang SET qty = qty - %s WHERE urutan = %s",
                                 (q, debt_urutan)
                             )
                     else:
-                        upsert_tabungan_dan_hutang(target_cursor, item_acc, kode, q, 'tambah', tanggal_dibuat=tgl)
+                        upsert_tabungan_dan_hutang(target_cursor, effective_item_acc, kode, q, 'tambah', tanggal_dibuat=tgl)
                     
     elif global_gap > 0.001:
         # Addition gap
@@ -593,7 +624,7 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
             tgl_jual, f_jual, item_acc = random.choice(r_rows)
             
             target_cursor.execute(
-                f"SELECT urutan, kode_brg, qty, acc FROM tabungan_dan_hutang WHERE acc IN ({placeholders}) AND tipe = 'tambah' AND qty > 0.0",
+                f"SELECT urutan, kode_brg, qty, acc FROM tabungan_dan_hutang WHERE (acc IN ({placeholders}) OR acc = 'A1') AND tipe = 'tambah' AND qty > 0.0",
                 (*acc_tuple,)
             )
             savings = target_cursor.fetchall()
@@ -603,6 +634,17 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                 if abs(s_qty) < 0.001:
                     target_cursor.execute("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (s_urutan,))
                     continue
+
+                # Check A1 Priority Rule
+                source_cursor.execute("SELECT 1 FROM barang WHERE ACC = 'A1' AND KODE_BRG = %s", (s_kode,))
+                is_a1_product = source_cursor.fetchone() is not None
+                if is_a1_product:
+                    if s_acc != 'A1':
+                        continue
+                else:
+                    if s_acc not in acc_tuple:
+                        continue
+
                 source_cursor.execute(
                     "SELECT HRG_JUAL, HRG_BELI, PAJAK FROM barang WHERE ACC = %s AND KODE_BRG = %s",
                     (s_acc, s_kode)

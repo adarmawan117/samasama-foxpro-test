@@ -137,3 +137,18 @@ python python_test/adjusment_ppn/run_tests_via_python.py
 - **Cause**: This is a known PyQt5 garbage-collection limitation on Windows. When the Python interpreter exits and unloads modules, C++ QObjects that were not deleted explicitly attempt to access deallocated memory.
 - **Solution**:
   - This crash occurs during interpreter shutdown *after* all tests have run and logs have been saved. You can verify successful execution by checking the final lines of `python_test/test_run_results.txt` for the line: `SUCCESS: True`.
+
+---
+
+## 6. A1 Priority Business Rule for Savings
+
+To manage shared inventory and tax liabilities between retail and wholesale channels, the tool enforces the **A1 Priority Business Rule** for the savings (`tabungan_dan_hutang`) system:
+
+### 6.1 Priority Behavior
+- Before recording a savings deposit (`tambah`), a debt entry (`kurang`), or performing a fictional injection from savings, the system checks the master `barang` table for the product code (`KODE_BRG`).
+- If the product exists under account `A1`, the savings mutation is recorded under `ACC = 'A1'`, even if the current transaction being processed belongs to another account (e.g. grosir `A3`).
+- If the product does not exist under `A1` in the master table, the system falls back to using the transaction's original account (e.g., `A3`).
+
+### 6.2 Rollback Behavior
+- When a rollback is performed for a target account (e.g., `A3`), the rollback engine queries the master `barang` table to identify which products of that account are redirected to `A1`.
+- The engine then restores the consumed savings logs and deletes newly created savings/debt records for both the target account (`A3`) and the redirected account (`A1`) for those specific products. This ensures complete data integrity and prevents dangling overridden records.
