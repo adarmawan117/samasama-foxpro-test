@@ -152,6 +152,7 @@ class AdjustmentPajakController(QObject):
 
             self.view.combo_acc.clear()
             self.view.combo_acc.addItem("Select Account...", "")
+            self.view.combo_acc.addItem("ALL - A1 & A3 (Gabungan)", "ALL")
             for rec in records:
                 self.view.combo_acc.addItem(f"{rec[0]} - {rec[1]}", rec[0])
         except Exception as e:
@@ -181,6 +182,11 @@ class AdjustmentPajakController(QObject):
         if not acc:
             self.view.show_critical_message("Error", "Please select an account.")
             return
+
+        if acc == "ALL":
+            acc_tuple = ('A1', 'A3')
+        else:
+            acc_tuple = (acc,)
 
         if not target_ppn_str:
             self.view.show_critical_message("Error", "Please input target PPN.")
@@ -219,7 +225,7 @@ class AdjustmentPajakController(QObject):
             'database': target_db
         }
 
-        self.worker = WorkerThread(source_config, target_config, acc, start_date, end_date, target_ppn)
+        self.worker = WorkerThread(source_config, target_config, acc_tuple, start_date, end_date, target_ppn)
         # Expose worker to view for compatibility/closeEvent
         self.view.worker = self.worker
         

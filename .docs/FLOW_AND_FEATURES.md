@@ -21,9 +21,9 @@ Dokumen ini menjelaskan langkah-langkah penggunaan sistem penyesuaian PPN besert
 
 ### 4. Menentukan Parameter dan Target Pajak PPN
 4. Pengguna memilih cabang yang akan disesuaikan, menentukan rentang tanggal transaksi, serta memasukkan angka target pajak yang ingin dicapai.
-   - **a. Pilihan Cabang (Akun):** Klik menu dropdown akun dan pilih cabang toko yang ingin disesuaikan transaksinya.
+   - **a. Pilihan Cabang (Akun):** Klik menu dropdown akun dan pilih cabang toko yang ingin disesuaikan. Kini tersedia pilihan **"ALL - A1 & A3 (Gabungan)"**.
    - **b. Batasan Tanggal:** Tentukan tanggal mulai dan tanggal akhir penyesuaian agar transaksi di luar rentang waktu tersebut tidak ikut terganggu.
-   - **c. Pengisian Target Pajak:** Masukkan nominal target pajak PPN yang diinginkan. Sistem akan menghitung secara otomatis berapa banyak omset transaksi yang harus dikurangi atau ditambah untuk mencapai target tersebut.
+   - **c. Pengisian Target Pajak:** Masukkan nominal target pajak PPN yang diinginkan. Jika Anda memilih "ALL", target ini akan dipotong secara proporsional ke total omset gabungan A1 dan A3.
 
 ### 5. Menjalankan Penyesuaian (Adjustment)
 5. Pengguna menekan tombol **Proses** untuk memulai perhitungan dan perubahan transaksi di database target secara otomatis di latar belakang.
@@ -64,3 +64,9 @@ Sistem ini bekerja layaknya sebuah tim pencatat keuangan yang menggunakan metode
 10. Akibat pembulatan pecahan desimal dan batas minimal nota, terkadang masih tersisa sedikit selisih angka (gap) setelah penyesuaian utama selesai.
     - **a. Pembagian Selisih Kurang:** Jika omset masih kelebihan sedikit dari target, sistem akan memilih nota secara acak dan memotong barang berharga tinggi yang ada di dalamnya sampai target pas.
     - **b. Pembagian Selisih Tambah:** Jika omset masih kurang sedikit dari target, sistem akan memilih nota secara acak, mengambil sisa celengan yang masih ada, atau menyuntikkan barang dengan nilai terdekat agar selisih tersebut tertutup sempurna.
+
+### 11. Fitur Gabungan Akun (Silang Subsidi)
+11. Jika Anda memilih opsi "ALL - A1 & A3 (Gabungan)", sistem akan memproses kedua cabang secara bersamaan dengan keuntungan "Silang Subsidi":
+    - **a. Berbagi Celengan:** Kelebihan atau sisa barang hasil pemotongan (celengan) dari cabang A1 dapat secara otomatis dipakai untuk menambal kekurangan target di nota cabang A3, begitu pula sebaliknya.
+    - **b. Target Gabungan:** Anda hanya perlu memasukkan satu angka target pajak, dan sistem akan membaginya secara adil ke kedua cabang sesuai besar omset masing-masing.
+    - **c. Penanda Log:** Pada hasil export laporan akhir (CSV), setiap baris tindakan akan diberi penanda `[A1]` atau `[A3]` agar Anda mudah melacak dari cabang mana transaksi tersebut berasal.

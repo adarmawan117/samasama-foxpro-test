@@ -76,7 +76,9 @@ python python_test/run_gui.py
    - If the Target Database is missing, the application will display a warning: **"Database Target belum ada. Apakah Anda ingin melanjutkan dengan mengkloning saat proses berjalan?"**
    - Click **Yes** to authorize the system to clone the database structure and initial transactions from the Source DB when the adjustment is started.
 3. **Select Account & Target Parameters**:
-   - After a successful connection test, the account dropdown menu will populate with accounts retrieved from the source `accinv` table. Select the target branch account (e.g., `001 - Account Utama`).
+   - After a successful connection test, the account dropdown menu will populate with accounts retrieved from the source `accinv` table. You can select a specific branch or the new "ALL - A1 & A3 (Gabungan)" option.
+   - If "ALL" is chosen, the single Target PPN you enter will be proportionally deducted/added across the combined total omset of both A1 and A3.
+   - This "ALL" mode activates the **Silang Subsidi (Cross-Pollination)** feature: any leftover deductions (savings) from A1 can be automatically used to cover additions in A3, and vice versa.
    - Define the start and end dates for the adjustment range using the date widgets.
    - Enter the target PPN (tax value) to achieve in the target database.
 4. **Jalankan Proses (Execute Adjustment)**:
@@ -85,7 +87,7 @@ python python_test/run_gui.py
    - Click **Yes** to execute a full rollback of the ledger tables (`tabungan_dan_hutang` and `log_mutasi_tabungan`), purge existing target transactions, re-synchronize clean raw data from the Source DB, and run the adjustment.
 5. **Export Log details**:
    - When the process completes, the UI displays the final remaining gap (rounding remainder).
-   - The **Export** button becomes active. Click it to save the action logs to a CSV file (e.g., `adjustments_detail.csv`).
+   - The **Export** button becomes active. Click it to save the action logs to a CSV file (e.g., `adjustments_detail.csv`). If you processed the "ALL" batch, the log entries will include a prefix like `[A1]` or `[A3]` to indicate the origin branch.
 
 ---
 

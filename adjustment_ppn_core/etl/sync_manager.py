@@ -5,8 +5,10 @@ def check_transactions_exist_in_range(target_conn, acc, start_date, end_date):
     Checks if transactions exist in the target database in the specified range.
     """
     cursor = target_conn.cursor()
-    query = "SELECT COUNT(*) FROM djual WHERE ACC = %s AND TGL_JUAL >= %s AND TGL_JUAL <= %s"
-    cursor.execute(query, (acc, start_date, end_date))
+    acc_tuple = (acc,) if isinstance(acc, str) else acc
+    placeholders = ", ".join(["%s"] * len(acc_tuple))
+    query = f"SELECT COUNT(*) FROM djual WHERE ACC IN ({placeholders}) AND TGL_JUAL >= %s AND TGL_JUAL <= %s"
+    cursor.execute(query, (*acc_tuple, start_date, end_date))
     row = cursor.fetchone()
     count = row[0] if row else 0
     return count > 0
@@ -22,16 +24,20 @@ def purge_transactions_in_range(target_conn, acc, start_date, end_date):
     
     for table in tables_sales:
         if acc is not None:
-            query = f"DELETE FROM {table} WHERE ACC = %s AND TGL_JUAL >= %s AND TGL_JUAL <= %s"
-            cursor.execute(query, (acc, start_date, end_date))
+            acc_tuple = (acc,) if isinstance(acc, str) else acc
+            placeholders = ", ".join(["%s"] * len(acc_tuple))
+            query = f"DELETE FROM {table} WHERE ACC IN ({placeholders}) AND TGL_JUAL >= %s AND TGL_JUAL <= %s"
+            cursor.execute(query, (*acc_tuple, start_date, end_date))
         else:
             query = f"DELETE FROM {table} WHERE TGL_JUAL >= %s AND TGL_JUAL <= %s"
             cursor.execute(query, (start_date, end_date))
             
     for table in tables_purchases:
         if acc is not None:
-            query = f"DELETE FROM {table} WHERE ACC = %s AND TGL_BELI >= %s AND TGL_BELI <= %s"
-            cursor.execute(query, (acc, start_date, end_date))
+            acc_tuple = (acc,) if isinstance(acc, str) else acc
+            placeholders = ", ".join(["%s"] * len(acc_tuple))
+            query = f"DELETE FROM {table} WHERE ACC IN ({placeholders}) AND TGL_BELI >= %s AND TGL_BELI <= %s"
+            cursor.execute(query, (*acc_tuple, start_date, end_date))
         else:
             query = f"DELETE FROM {table} WHERE TGL_BELI >= %s AND TGL_BELI <= %s"
             cursor.execute(query, (start_date, end_date))
@@ -56,8 +62,10 @@ def sync_raw_transactions_in_range(source_conn, target_conn, acc, start_date, en
     
     for table in tables_sales:
         if acc is not None:
-            query = f"SELECT * FROM {table} WHERE ACC = %s AND TGL_JUAL >= %s AND TGL_JUAL <= %s"
-            source_cursor.execute(query, (acc, start_date, end_date))
+            acc_tuple = (acc,) if isinstance(acc, str) else acc
+            placeholders = ", ".join(["%s"] * len(acc_tuple))
+            query = f"SELECT * FROM {table} WHERE ACC IN ({placeholders}) AND TGL_JUAL >= %s AND TGL_JUAL <= %s"
+            source_cursor.execute(query, (*acc_tuple, start_date, end_date))
         else:
             query = f"SELECT * FROM {table} WHERE TGL_JUAL >= %s AND TGL_JUAL <= %s"
             source_cursor.execute(query, (start_date, end_date))
@@ -71,8 +79,10 @@ def sync_raw_transactions_in_range(source_conn, target_conn, acc, start_date, en
             
     for table in tables_purchases:
         if acc is not None:
-            query = f"SELECT * FROM {table} WHERE ACC = %s AND TGL_BELI >= %s AND TGL_BELI <= %s"
-            source_cursor.execute(query, (acc, start_date, end_date))
+            acc_tuple = (acc,) if isinstance(acc, str) else acc
+            placeholders = ", ".join(["%s"] * len(acc_tuple))
+            query = f"SELECT * FROM {table} WHERE ACC IN ({placeholders}) AND TGL_BELI >= %s AND TGL_BELI <= %s"
+            source_cursor.execute(query, (*acc_tuple, start_date, end_date))
         else:
             query = f"SELECT * FROM {table} WHERE TGL_BELI >= %s AND TGL_BELI <= %s"
             source_cursor.execute(query, (start_date, end_date))

@@ -66,7 +66,7 @@ class TestIdempotentETL(unittest.TestCase):
             self.assertTrue(query_upper.startswith("DELETE"))
             
             # Verify that query has ACC and date parameters
-            self.assertIn("ACC = %S", query_upper)
+            self.assertIn("ACC IN", query_upper)
             if "DJUAL" in query_upper or "DRJUAL" in query_upper:
                 self.assertIn("TGL_JUAL >= %S", query_upper)
                 self.assertIn("TGL_JUAL <= %S", query_upper)

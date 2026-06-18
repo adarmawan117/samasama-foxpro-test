@@ -455,7 +455,7 @@ class TestGUIPopupFlows(unittest.TestCase):
             cls.app = QApplication(sys.argv)
 
     @patch("adjustment_ppn_gui.main_window.QMessageBox.question")
-    @patch("adjustment_ppn_gui.main_window.CloneWorkerThread")
+    @patch("adjustment_ppn_gui.controller.CloneWorkerThread")
     def test_on_db_not_found_yes_flow(self, mock_clone_worker_cls, mock_question):
         """Verify that choosing Yes in the popup spawns the CloneWorkerThread."""
         mock_question.return_value = QMessageBox.Yes
@@ -489,7 +489,7 @@ class TestGUIPopupFlows(unittest.TestCase):
         self.assertTrue(app_gui.source_host_input.isEnabled())
 
     @patch("adjustment_ppn_gui.main_window.QMessageBox.information")
-    @patch("adjustment_ppn_gui.main_window.ProsesAdjustmentPajakApp.click_proses")
+    @patch("adjustment_ppn_gui.controller.AdjustmentPajakController.click_proses")
     def test_on_clone_finished_success_restarts_process(self, mock_click_proses, mock_info):
         """Verify that a successful clone displays an information dialog and restarts adjustment process."""
         app_gui = ProsesAdjustmentPajakApp()

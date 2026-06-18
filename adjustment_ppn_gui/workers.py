@@ -141,39 +141,30 @@ class WorkerThread(QThread):
                 # Target PPN = 0 balancing (same as main in backend)
                 cursor_src = source_conn.cursor()
                 cursor_tgt = target_conn.cursor()
-                cursor_src.execute("""
+                acc_tuple = self.acc if isinstance(self.acc, (list, tuple)) else (self.acc,)
+                placeholders = ", ".join(["?"] * len(acc_tuple)) if is_sandbox else ", ".join(["%s"] * len(acc_tuple))
+                cursor_src.execute(f"""
                     SELECT TGL_JUAL, F_JUAL, COUNT(*) 
                     FROM djual 
-                    WHERE ACC = ? AND TGL_JUAL >= ? AND TGL_JUAL <= ?
+                    WHERE ACC IN ({placeholders}) AND TGL_JUAL >= {'?' if is_sandbox else '%s'} AND TGL_JUAL <= {'?' if is_sandbox else '%s'}
                     GROUP BY TGL_JUAL, F_JUAL
-                """ if is_sandbox else """
-                    SELECT TGL_JUAL, F_JUAL, COUNT(*) 
-                    FROM djual 
-                    WHERE ACC = %s AND TGL_JUAL >= %s AND TGL_JUAL <= %s
-                    GROUP BY TGL_JUAL, F_JUAL
-                """, (self.acc, self.start_date, self.end_date))
+                """, (*acc_tuple, self.start_date, self.end_date))
                 receipts = cursor_src.fetchall()
                 if len(receipts) >= 2:
-                    cursor_src.execute("""
-                        SELECT d.TGL_JUAL, d.F_JUAL, d.KODE_BRG, d.JUMLAH, d.HRG_JUAL, d.URUTAN, d.HRG_BELI
+                    cursor_src.execute(f"""
+                        SELECT d.TGL_JUAL, d.F_JUAL, d.KODE_BRG, d.JUMLAH, d.HRG_JUAL, d.URUTAN, d.HRG_BELI, d.ACC
                         FROM djual d
                         JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-                        WHERE d.ACC = ? AND d.TGL_JUAL >= ? AND d.TGL_JUAL <= ? AND b.PAJAK = 1
+                        WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if is_sandbox else '%s'} AND d.TGL_JUAL <= {'?' if is_sandbox else '%s'} AND b.PAJAK = 1
                         ORDER BY d.HRG_JUAL DESC, d.URUTAN DESC
-                    """ if is_sandbox else """
-                        SELECT d.TGL_JUAL, d.F_JUAL, d.KODE_BRG, d.JUMLAH, d.HRG_JUAL, d.URUTAN, d.HRG_BELI
-                        FROM djual d
-                        JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-                        WHERE d.ACC = %s AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
-                        ORDER BY d.HRG_JUAL DESC, d.URUTAN DESC
-                    """, (self.acc, self.start_date, self.end_date))
+                    """, (*acc_tuple, self.start_date, self.end_date))
                     ppn_items = cursor_src.fetchall()
                     
                     receipt_counts = {(r[0], r[1]): r[2] for r in receipts}
                     
                     reduce_item = None
                     for item in ppn_items:
-                        tgl, f_jual, kode, qty, price, urutan, hrg_beli = item
+                        tgl, f_jual, kode, qty, price, urutan, hrg_beli, item_acc = item
                         count = receipt_counts[(tgl, f_jual)]
                         max_q = qty if count > 1 else qty - 1
                         if max_q >= 1:
@@ -181,7 +172,7 @@ class WorkerThread(QThread):
                             break
                     
                     if reduce_item:
-                        tgl_red, f_red, kode_red, qty_red, price_red, urutan_red, hrg_beli_red = reduce_item
+                        tgl_red, f_red, kode_red, qty_red, price_red, urutan_red, hrg_beli_red, item_acc = reduce_item
                         new_qty = qty_red - 1
                         if new_qty <= 0:
                             cursor_tgt.execute("DELETE FROM djual WHERE urutan = ?" if is_sandbox else "DELETE FROM djual WHERE urutan = %s", (urutan_red,))
@@ -197,13 +188,10 @@ class WorkerThread(QThread):
                         
                         if target_receipt:
                             tgl_add, f_add, _ = target_receipt
-                            cursor_tgt.execute("""
+                            cursor_tgt.execute(f"""
                                 SELECT urutan FROM djual 
-                                WHERE ACC = ? AND TGL_JUAL = ? AND F_JUAL = ? AND KODE_BRG = ?
-                            """ if is_sandbox else """
-                                SELECT urutan FROM djual 
-                                WHERE ACC = %s AND TGL_JUAL = %s AND F_JUAL = %s AND KODE_BRG = %s
-                            """, (self.acc, tgl_add, f_add, kode_red))
+                                WHERE ACC = {'?' if is_sandbox else '%s'} AND TGL_JUAL = {'?' if is_sandbox else '%s'} AND F_JUAL = {'?' if is_sandbox else '%s'} AND KODE_BRG = {'?' if is_sandbox else '%s'}
+                            """, (item_acc, tgl_add, f_add, kode_red))
                             existing = cursor_tgt.fetchone()
                             if existing:
                                 cursor_tgt.execute("UPDATE djual SET jumlah = jumlah + 1 WHERE urutan = ?" if is_sandbox else "UPDATE djual SET jumlah = jumlah + 1 WHERE urutan = %s", (existing[0],))
@@ -214,7 +202,7 @@ class WorkerThread(QThread):
                                 """ if is_sandbox else """
                                     INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN)
                                     VALUES (%s, %s, %s, %s, 1.0, %s, %s, 0.0, 0.0, 0.0, 0.0, 10.0)
-                                """, (tgl_add, f_add, self.acc, kode_red, hrg_beli_red, price_red))
+                                """, (tgl_add, f_add, item_acc, kode_red, hrg_beli_red, price_red))
                         local_callback("Action: Balanced Target PPN=0 | Shifted 1 unit of " + kode_red + " from " + f_red + " to " + f_add)
 
             target_conn.commit()

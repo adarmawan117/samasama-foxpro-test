@@ -208,6 +208,11 @@ After proportional adjustments, minor rounding differences (global gaps) are res
 - **Negative Gap (Remaining Reduction)**: Shuffles invoice records randomly. In each, it reduces quantities of high-price items and records the reduction as savings (`tambah`).
 - **Positive Gap (Remaining Addition)**: Chooses an invoice at random. It first attempts to consume any remaining savings from `tabungan_dan_hutang` (Scenario 2). If a gap still remains, it injects fictional quantities of the best-fitting product and records it as debt (`kurang`) (Scenario 3).
 
+### 5.5 Scenario 5: Multi-Account Cross-Pollination (Select All)
+The system supports executing multiple accounts in a single tuple (e.g., `acc=('A1', 'A3')`). When processed in this "ALL" batch:
+- **Proportional Targeting**: A single global PPN target is entered and proportionally distributed across all participating accounts based on their combined total omset.
+- **Shared Ledger (Cross-Pollination)**: The core module allows cross-pollination of savings. Leftover item deductions (savings or `tambah`) from one account's receipt (e.g., A1) can be used to fulfill the PPN addition targets of another account's receipt (e.g., A3) automatically.
+
 ---
 
 ## 6. Automated Testing Structure

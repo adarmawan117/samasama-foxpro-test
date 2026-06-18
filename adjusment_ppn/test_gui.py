@@ -278,8 +278,8 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         
         # Ensure combo box has options loaded from database
         self.assertGreater(self.window.combo_acc.count(), 1)
-        # Index 0 is placeholder, Index 1 should be Account '001'
-        self.assertEqual(self.window.combo_acc.itemData(1), "001")
+        # Index 0 is placeholder, Index 1 is ALL, Index 2 should be Account '001'
+        self.assertEqual(self.window.combo_acc.itemData(2), "001")
         # Ensure the components are enabled
         self.assertTrue(self.window.combo_acc.isEnabled())
 
@@ -293,7 +293,7 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         self.window.load_accounts()
         QApplication.processEvents()
         
-        self.window.combo_acc.setCurrentIndex(1) # Account 001
+        self.window.combo_acc.setCurrentIndex(2) # Account 001
         self.window.tgl_awal.setDate(QDate(2026, 6, 1))
         self.window.tgl_akhir.setDate(QDate(2026, 6, 30))
         self.window.target_ppn_input.setText("-15000.0") # Target decrease
@@ -366,7 +366,7 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         self.window.load_accounts()
         QApplication.processEvents()
         
-        self.window.combo_acc.setCurrentIndex(1)
+        self.window.combo_acc.setCurrentIndex(2)
         self.window.tgl_awal.setDate(QDate(2026, 6, 1))
         self.window.tgl_akhir.setDate(QDate(2026, 6, 30))
         self.window.target_ppn_input.setText("-10000.0")
@@ -438,7 +438,7 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
             QApplication.processEvents()
             # It should load the accounts successfully because .DB is recognized
             self.assertGreater(self.window.combo_acc.count(), 1)
-            self.assertEqual(self.window.combo_acc.itemData(1), "001")
+            self.assertEqual(self.window.combo_acc.itemData(2), "001")
         finally:
             try:
                 os.remove(db_path_upper)
@@ -452,12 +452,14 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         self.window.target_db_input.setText("my_mysql_target_database")
         # Ensure combo box has account selected (otherwise it stops at account check)
         self.window.combo_acc.addItem("Account 001", "001")
-        self.window.combo_acc.setCurrentIndex(1)
+        self.window.combo_acc.setCurrentIndex(self.window.combo_acc.count() - 1)
         self.window.target_ppn_input.setText("100.0")
         
         start_called = [False]
-        def mock_start(self):
+        window_ref = self.window
+        def mock_start(worker_self):
             start_called[0] = True
+            window_ref.set_process_running(False)
         WorkerThread.start = mock_start
         
         try:
@@ -488,6 +490,10 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         event = MockCloseEvent()
         self.window.closeEvent(event)
         self.assertFalse(event._accepted)
+        
+        # Cleanup so tearDown doesn't hang
+        self.window.worker = None
+        self.window.set_process_running(False)
         # Verify warning dialog was shown
         warning_calls = [call for call in self.msg_box_calls if call[0] == "warning"]
         self.assertTrue(any("Proses penyesuaian sedang berjalan" in call[2] for call in warning_calls))
@@ -578,7 +584,7 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         self.window.target_db_input.setText(self.db_path)
         self.window.load_accounts()
         QApplication.processEvents()
-        self.window.combo_acc.setCurrentIndex(1)
+        self.window.combo_acc.setCurrentIndex(2)
         self.window.target_ppn_input.setText("")
         QApplication.processEvents()
         self.window.click_proses()

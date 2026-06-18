@@ -31,20 +31,21 @@ def upsert_tabungan_dan_hutang(cursor, acc, kode_brg, qty, tipe, tanggal_dibuat=
         )
 
 
-def settle_debt_with_savings(cursor, acc, kode_brg, best_k, tanggal_dibuat=None):
+def settle_debt_with_savings(cursor, acc_tuple, item_acc, kode_brg, best_k, tanggal_dibuat=None):
     """
     Settle the newly added quantity (which is a debt/kurang of best_k) 
     using any existing savings (tambah) for the same product first.
     If there is remaining debt, record it as 'kurang'.
     """
+    placeholders = ", ".join(["%s"] * len(acc_tuple))
     # 1. Check if there is a 'tambah' record for this product
     cursor.execute(
-        "SELECT urutan, qty FROM tabungan_dan_hutang WHERE acc = %s AND kode_brg = %s AND tipe = 'tambah' AND qty > 0.0",
-        (acc, kode_brg)
+        f"SELECT urutan, qty, acc FROM tabungan_dan_hutang WHERE acc IN ({placeholders}) AND kode_brg = %s AND tipe = 'tambah' AND qty > 0.0",
+        (*acc_tuple, kode_brg)
     )
     row = cursor.fetchone()
     if row:
-        tambah_urutan, tambah_qty = row
+        tambah_urutan, tambah_qty, _ = row
         tambah_qty = abs(tambah_qty)
         if best_k >= tambah_qty:
             # Settle all savings, delete 'tambah' record
@@ -55,7 +56,7 @@ def settle_debt_with_savings(cursor, acc, kode_brg, best_k, tanggal_dibuat=None)
             cursor.execute("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (tambah_urutan,))
             remaining_debt = best_k - tambah_qty
             if remaining_debt > 0:
-                upsert_tabungan_dan_hutang(cursor, acc, kode_brg, remaining_debt, 'kurang', tanggal_dibuat=tanggal_dibuat)
+                upsert_tabungan_dan_hutang(cursor, item_acc, kode_brg, remaining_debt, 'kurang', tanggal_dibuat=tanggal_dibuat)
         else:
             # Settle part of savings, reduce 'tambah' quantity
             cursor.execute(
@@ -69,41 +70,43 @@ def settle_debt_with_savings(cursor, acc, kode_brg, best_k, tanggal_dibuat=None)
             # No remaining debt to create/update
     else:
         # No savings found, record the entire debt
-        upsert_tabungan_dan_hutang(cursor, acc, kode_brg, best_k, 'kurang', tanggal_dibuat=tanggal_dibuat)
+        upsert_tabungan_dan_hutang(cursor, item_acc, kode_brg, best_k, 'kurang', tanggal_dibuat=tanggal_dibuat)
 
 
 def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date, target_ppn, log_callback=None):
+    acc_tuple = (acc,) if isinstance(acc, str) else acc
+    placeholders = ", ".join(["%s"] * len(acc_tuple))
     if log_callback and callable(log_callback):
-        log_callback(f"Action: Start Reduction | ACC: {acc} | Start Date: {start_date} | End Date: {end_date} | Target PPN: {target_ppn}")
+        log_callback(f"Action: Start Reduction | ACC: {acc_tuple} | Start Date: {start_date} | End Date: {end_date} | Target PPN: {target_ppn}")
 
     # Calculate target_omset_change
     source_cursor = source_conn.cursor()
     target_cursor = target_conn.cursor()
     
-    source_cursor.execute("""
+    source_cursor.execute(f"""
         SELECT COUNT(*) 
         FROM drjual d
         JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-        WHERE d.ACC = %s AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
-    """, (acc, start_date, end_date))
+        WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
+    """, (*acc_tuple, start_date, end_date))
     has_returns = source_cursor.fetchone()[0] > 0
     
     if has_returns:
         # target = net sales
-        source_cursor.execute("""
+        source_cursor.execute(f"""
             SELECT SUM(d.JUMLAH * d.HRG_JUAL) 
             FROM djual d
             JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-            WHERE d.ACC = %s AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
-        """, (acc, start_date, end_date))
+            WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
+        """, (*acc_tuple, start_date, end_date))
         djual_sum = source_cursor.fetchone()[0] or 0.0
         
-        source_cursor.execute("""
+        source_cursor.execute(f"""
             SELECT SUM(d.JUMLAH * d.HRG_JUAL) 
             FROM drjual d
             JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-            WHERE d.ACC = %s AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
-        """, (acc, start_date, end_date))
+            WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
+        """, (*acc_tuple, start_date, end_date))
         drjual_sum = source_cursor.fetchone()[0] or 0.0
         
         net_sales = djual_sum - drjual_sum
@@ -118,34 +121,35 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
         return 0.0
         
     # Get all PPN items in djual
-    source_cursor.execute("""
-        SELECT d.TGL_JUAL, d.F_JUAL, d.KODE_BRG, d.JUMLAH, d.HRG_JUAL, d.URUTAN
+    source_cursor.execute(f"""
+        SELECT d.TGL_JUAL, d.F_JUAL, d.KODE_BRG, d.JUMLAH, d.HRG_JUAL, d.URUTAN, d.ACC
         FROM djual d
         JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-        WHERE d.ACC = %s AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
+        WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
         ORDER BY d.TGL_JUAL ASC, d.F_JUAL ASC, d.URUTAN ASC
-    """, (acc, start_date, end_date))
+    """, (*acc_tuple, start_date, end_date))
     ppn_items = source_cursor.fetchall()
     
     # Group items by receipt: F_JUAL
     receipt_items = defaultdict(list)
     for row in ppn_items:
-        tgl_jual, f_jual, kode_brg, jumlah, hrg_jual, urutan = row
+        tgl_jual, f_jual, kode_brg, jumlah, hrg_jual, urutan, item_acc = row
         receipt_items[f_jual].append({
             'kode_brg': kode_brg,
             'jumlah': jumlah,
             'hrg_jual': hrg_jual,
             'urutan': urutan,
-            'tgl_jual': tgl_jual
+            'tgl_jual': tgl_jual,
+            'item_acc': item_acc
         })
         
     # Get total item counts per receipt (including non-PPN)
-    source_cursor.execute("""
+    source_cursor.execute(f"""
         SELECT F_JUAL, COUNT(*)
         FROM djual
-        WHERE ACC = %s AND TGL_JUAL >= %s AND TGL_JUAL <= %s
+        WHERE ACC IN ({placeholders}) AND TGL_JUAL >= %s AND TGL_JUAL <= %s
         GROUP BY F_JUAL
-    """, (acc, start_date, end_date))
+    """, (*acc_tuple, start_date, end_date))
     receipt_item_counts = {}
     for row in source_cursor.fetchall():
         receipt_item_counts[row[0]] = row[1]
@@ -201,29 +205,29 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
 
                 if log_callback and callable(log_callback):
                     remaining_gap = target_val - total_actual_reduction
-                    log_callback(f"Action: Reduce Quantity | Receipt: {f_jual} | Product: {item['kode_brg']} | Qty Reduced: {qty_to_reduce} | Value: {val_reduced} | Remaining Gap: {remaining_gap}")
+                    log_callback(f"[{item['item_acc']}] Action: Reduce Quantity | Receipt: {f_jual} | Product: {item['kode_brg']} | Qty Reduced: {qty_to_reduce} | Value: {val_reduced} | Remaining Gap: {remaining_gap}")
                 
                 # Self-healing and savings
                 target_cursor.execute(
-                    "SELECT urutan, qty FROM tabungan_dan_hutang WHERE acc = %s AND kode_brg = %s AND tipe = 'kurang' AND qty > 0.0",
-                    (acc, item['kode_brg'])
+                    f"SELECT urutan, qty, acc FROM tabungan_dan_hutang WHERE acc IN ({placeholders}) AND kode_brg = %s AND tipe = 'kurang' AND qty > 0.0",
+                    (*acc_tuple, item['kode_brg'])
                 )
                 debt_row = target_cursor.fetchone()
                 if debt_row:
-                    debt_urutan, debt_qty = debt_row
+                    debt_urutan, debt_qty, _ = debt_row
                     debt_qty = abs(debt_qty)
                     if qty_to_reduce >= debt_qty:
                         target_cursor.execute("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (debt_urutan,))
                         rem_qty = qty_to_reduce - debt_qty
                         if rem_qty > 0:
-                            upsert_tabungan_dan_hutang(target_cursor, acc, item['kode_brg'], rem_qty, 'tambah', tanggal_dibuat=item['tgl_jual'])
+                            upsert_tabungan_dan_hutang(target_cursor, item['item_acc'], item['kode_brg'], rem_qty, 'tambah', tanggal_dibuat=item['tgl_jual'])
                     else:
                         target_cursor.execute(
                             "UPDATE tabungan_dan_hutang SET qty = qty - %s WHERE urutan = %s",
                             (qty_to_reduce, debt_urutan)
                         )
                 else:
-                    upsert_tabungan_dan_hutang(target_cursor, acc, item['kode_brg'], qty_to_reduce, 'tambah', tanggal_dibuat=item['tgl_jual'])
+                    upsert_tabungan_dan_hutang(target_cursor, item['item_acc'], item['kode_brg'], qty_to_reduce, 'tambah', tanggal_dibuat=item['tgl_jual'])
                     
     global_gap = target_omset_change + total_actual_reduction
     if log_callback and callable(log_callback):
@@ -232,9 +236,11 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
 
 
 def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date, target_ppn, log_callback=None):
+    acc_tuple = (acc,) if isinstance(acc, str) else acc
+    placeholders = ", ".join(["%s"] * len(acc_tuple))
     target_val = abs(float(target_ppn)) if target_ppn is not None else 0.0
     if log_callback and callable(log_callback):
-        log_callback(f"Action: Start Addition | ACC: {acc} | Start Date: {start_date} | End Date: {end_date} | Target PPN: {target_ppn}")
+        log_callback(f"Action: Start Addition | ACC: {acc_tuple} | Start Date: {start_date} | End Date: {end_date} | Target PPN: {target_ppn}")
         
     if target_val < 0.001:
         if log_callback and callable(log_callback):
@@ -245,12 +251,12 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
     target_cursor = target_conn.cursor()
     
     # Get all items in djual (including non-PPN)
-    source_cursor.execute("""
-        SELECT TGL_JUAL, F_JUAL, KODE_BRG, JUMLAH, HRG_JUAL, URUTAN
+    source_cursor.execute(f"""
+        SELECT TGL_JUAL, F_JUAL, KODE_BRG, JUMLAH, HRG_JUAL, URUTAN, ACC
         FROM djual
-        WHERE ACC = %s AND TGL_JUAL >= %s AND TGL_JUAL <= %s
+        WHERE ACC IN ({placeholders}) AND TGL_JUAL >= %s AND TGL_JUAL <= %s
         ORDER BY TGL_JUAL ASC, F_JUAL ASC, URUTAN ASC
-    """, (acc, start_date, end_date))
+    """, (*acc_tuple, start_date, end_date))
     all_items = source_cursor.fetchall()
     
     if not all_items:
@@ -263,13 +269,13 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
     seen_receipts = set()
     total_omset = 0.0
     for row in all_items:
-        tgl_jual, f_jual, kode_brg, jumlah, hrg_jual, urutan = row
+        tgl_jual, f_jual, kode_brg, jumlah, hrg_jual, urutan, item_acc = row
         r_key = f_jual
         receipt_totals[r_key] += jumlah * hrg_jual
         total_omset += jumlah * hrg_jual
         if r_key not in seen_receipts:
             seen_receipts.add(r_key)
-            receipt_keys.append((tgl_jual, f_jual))
+            receipt_keys.append((tgl_jual, f_jual, item_acc))
             
     if total_omset < 0.001:
         P = 1.0
@@ -278,27 +284,27 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
         
     total_actual_addition = 0.0
     
-    for tgl_jual, f_jual in receipt_keys:
+    for tgl_jual, f_jual, item_acc in receipt_keys:
         r_key = f_jual
         receipt_target = receipt_totals[r_key] * P
         
         while receipt_target > 0.001:
             # Draw from savings ('tambah')
             target_cursor.execute(
-                "SELECT urutan, kode_brg, qty FROM tabungan_dan_hutang WHERE acc = %s AND tipe = 'tambah' AND qty > 0.0",
-                (acc,)
+                f"SELECT urutan, kode_brg, qty, acc FROM tabungan_dan_hutang WHERE acc IN ({placeholders}) AND tipe = 'tambah' AND qty > 0.0",
+                (*acc_tuple,)
             )
             savings = target_cursor.fetchall()
             
             valid_savings = []
             for s_row in savings:
-                s_urutan, s_kode, s_qty = s_row
+                s_urutan, s_kode, s_qty, s_acc = s_row
                 if abs(s_qty) < 0.001:
                     target_cursor.execute("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (s_urutan,))
                     continue
                 source_cursor.execute(
                     "SELECT HRG_JUAL, HRG_BELI, PAJAK FROM barang WHERE ACC = %s AND KODE_BRG = %s",
-                    (acc, s_kode)
+                    (s_acc, s_kode)
                 )
                 b_row = source_cursor.fetchone()
                 if b_row and b_row[2] == 1:
@@ -307,7 +313,8 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                         'kode_brg': s_kode,
                         'qty': abs(s_qty),
                         'price': b_row[0],
-                        'hrg_beli': b_row[1]
+                        'hrg_beli': b_row[1],
+                        's_acc': s_acc
                     })
                     
             if valid_savings:
@@ -362,7 +369,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                         
                     target_cursor.execute(
                         "SELECT urutan FROM djual WHERE ACC = %s AND TGL_JUAL = %s AND F_JUAL = %s AND KODE_BRG = %s",
-                        (acc, tgl_jual, f_jual, vs['kode_brg'])
+                        (item_acc, tgl_jual, f_jual, vs['kode_brg'])
                     )
                     existing_row = target_cursor.fetchone()
                     if existing_row:
@@ -374,7 +381,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                         target_cursor.execute(
                             "INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN) "
                             "VALUES (%s, %s, %s, %s, %s, %s, %s, 0.0, 0.0, 0.0, 0.0, 10.0)",
-                            (tgl_jual, f_jual, acc, vs['kode_brg'], qty_to_draw, vs['hrg_beli'], vs['price'])
+                            (tgl_jual, f_jual, item_acc, vs['kode_brg'], qty_to_draw, vs['hrg_beli'], vs['price'])
                         )
                         
                     val_added = qty_to_draw * vs['price']
@@ -383,7 +390,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
 
                     if log_callback and callable(log_callback):
                         remaining_gap = target_val - total_actual_addition
-                        log_callback(f"Action: Draw Savings | Receipt: {f_jual} | Product: {vs['kode_brg']} | Qty Added: {qty_to_draw} | Value: {val_added} | Remaining Gap: {remaining_gap}")
+                        log_callback(f"[{item_acc}] Action: Draw Savings | Receipt: {f_jual} | Product: {vs['kode_brg']} | Qty Added: {qty_to_draw} | Value: {val_added} | Remaining Gap: {remaining_gap}")
                     continue
                     
             # Fictional injection
@@ -395,7 +402,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                 "SELECT d.KODE_BRG, d.HRG_JUAL, d.HRG_BELI "
                 "FROM djual d "
                 "WHERE d.ACC = %s AND d.F_JUAL = %s AND d.F_PPN > 0",
-                (acc, acc, f_jual)
+                (item_acc, item_acc, f_jual)
             )
             all_ppn_products = source_cursor.fetchall()
             if not all_ppn_products:
@@ -405,7 +412,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                 
             target_cursor.execute(
                 "SELECT DISTINCT KODE_BRG FROM djual WHERE ACC = %s AND TGL_JUAL = %s AND F_JUAL = %s",
-                (acc, tgl_jual, f_jual)
+                (item_acc, tgl_jual, f_jual)
             )
             
             best_product = None
@@ -445,7 +452,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                 p_code = best_product['kode_brg']
                 target_cursor.execute(
                     "SELECT urutan FROM djual WHERE ACC = %s AND TGL_JUAL = %s AND F_JUAL = %s AND KODE_BRG = %s",
-                    (acc, tgl_jual, f_jual, p_code)
+                    (item_acc, tgl_jual, f_jual, p_code)
                 )
                 existing_row = target_cursor.fetchone()
                 if existing_row:
@@ -457,10 +464,10 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                     target_cursor.execute(
                         "INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN) "
                         "VALUES (%s, %s, %s, %s, %s, %s, %s, 0.0, 0.0, 0.0, 0.0, 10.0)",
-                        (tgl_jual, f_jual, acc, p_code, best_k, best_product['hrg_beli'], best_product['price'])
+                        (tgl_jual, f_jual, item_acc, p_code, best_k, best_product['hrg_beli'], best_product['price'])
                     )
                     
-                settle_debt_with_savings(target_cursor, acc, p_code, best_k, tanggal_dibuat=tgl_jual)
+                settle_debt_with_savings(target_cursor, acc_tuple, item_acc, p_code, best_k, tanggal_dibuat=tgl_jual)
                 
                 val_injected = best_k * best_product['price']
                 receipt_target -= val_injected
@@ -468,7 +475,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
 
                 if log_callback and callable(log_callback):
                     remaining_gap = target_val - total_actual_addition
-                    log_callback(f"Action: Fictional Injection | Receipt: {f_jual} | Product: {p_code} | Qty Injected: {best_k} | Value: {val_injected} | Remaining Gap: {remaining_gap}")
+                    log_callback(f"[{item_acc}] Action: Fictional Injection | Receipt: {f_jual} | Product: {p_code} | Qty Injected: {best_k} | Value: {val_injected} | Remaining Gap: {remaining_gap}")
             else:
                 break
                 
@@ -479,8 +486,10 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
 
 
 def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date, global_gap, log_callback=None):
+    acc_tuple = (acc,) if isinstance(acc, str) else acc
+    placeholders = ", ".join(["%s"] * len(acc_tuple))
     if log_callback and callable(log_callback):
-        log_callback(f"Action: Start Distribute Global Gap | ACC: {acc} | Start Date: {start_date} | End Date: {end_date} | Global Gap: {global_gap}")
+        log_callback(f"Action: Start Distribute Global Gap | ACC: {acc_tuple} | Start Date: {start_date} | End Date: {end_date} | Global Gap: {global_gap}")
         
     source_cursor = source_conn.cursor()
     target_cursor = target_conn.cursor()
@@ -490,31 +499,31 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
         gap_to_reduce = abs(global_gap)
         
         # Get PPN taxable product codes from source_conn's barang table
-        source_cursor.execute("SELECT KODE_BRG FROM barang WHERE ACC = %s AND PAJAK = 1", (acc,))
+        source_cursor.execute(f"SELECT KODE_BRG FROM barang WHERE ACC IN ({placeholders}) AND PAJAK = 1", (*acc_tuple,))
         ppn_product_codes = {row[0] for row in source_cursor.fetchall()}
         
         # Query target djual items
-        target_cursor.execute("""
-            SELECT TGL_JUAL, F_JUAL, KODE_BRG, JUMLAH, HRG_JUAL, URUTAN
+        target_cursor.execute(f"""
+            SELECT TGL_JUAL, F_JUAL, KODE_BRG, JUMLAH, HRG_JUAL, URUTAN, ACC
             FROM djual
-            WHERE ACC = %s AND TGL_JUAL >= %s AND TGL_JUAL <= %s
-        """, (acc, start_date, end_date))
+            WHERE ACC IN ({placeholders}) AND TGL_JUAL >= %s AND TGL_JUAL <= %s
+        """, (*acc_tuple, start_date, end_date))
         all_target_items = target_cursor.fetchall()
         items = [row for row in all_target_items if row[2] in ppn_product_codes]
         
         # Query receipt counts from target
-        target_cursor.execute("""
+        target_cursor.execute(f"""
             SELECT F_JUAL, COUNT(*)
             FROM djual
-            WHERE ACC = %s AND TGL_JUAL >= %s AND TGL_JUAL <= %s
+            WHERE ACC IN ({placeholders}) AND TGL_JUAL >= %s AND TGL_JUAL <= %s
             GROUP BY F_JUAL
-        """, (acc, start_date, end_date))
+        """, (*acc_tuple, start_date, end_date))
         receipt_counts = {row[0]: row[1] for row in target_cursor.fetchall()}
         
         # Group items by receipt
         receipt_to_items = defaultdict(list)
         for row in items:
-            tgl, f_jual, kode, qty, price, urutan = row
+            tgl, f_jual, kode, qty, price, urutan, item_acc = row
             receipt_to_items[f_jual].append(row)
             
         # Select receipts in random order
@@ -526,7 +535,7 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
             # Within the receipt, sort by price DESC or order of urutan DESC
             r_items.sort(key=lambda x: (x[4], x[5]), reverse=True)
             for row in r_items:
-                tgl, f_jual, kode, qty, price, urutan = row
+                tgl, f_jual, kode, qty, price, urutan, item_acc = row
                 if gap_to_reduce < 0.001:
                     break
                 
@@ -548,55 +557,55 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                     gap_to_reduce -= val_reduced
 
                     if log_callback and callable(log_callback):
-                        log_callback(f"Action: Distribute Reduction Gap | Receipt: {f_jual} | Product: {kode} | Qty Reduced: {q} | Value: {val_reduced} | Remaining Gap: {-gap_to_reduce}")
+                        log_callback(f"[{item_acc}] Action: Distribute Reduction Gap | Receipt: {f_jual} | Product: {kode} | Qty Reduced: {q} | Value: {val_reduced} | Remaining Gap: {-gap_to_reduce}")
                     
                     # Self-healing and savings
                     target_cursor.execute(
-                        "SELECT urutan, qty FROM tabungan_dan_hutang WHERE acc = %s AND kode_brg = %s AND tipe = 'kurang' AND qty > 0.0",
-                        (acc, kode)
+                        f"SELECT urutan, qty, acc FROM tabungan_dan_hutang WHERE acc IN ({placeholders}) AND kode_brg = %s AND tipe = 'kurang' AND qty > 0.0",
+                        (*acc_tuple, kode)
                     )
                     debt_row = target_cursor.fetchone()
                     if debt_row:
-                        debt_urutan, debt_qty = debt_row
+                        debt_urutan, debt_qty, _ = debt_row
                         debt_qty = abs(debt_qty)
                         if q >= debt_qty:
                             target_cursor.execute("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (debt_urutan,))
                             rem = q - debt_qty
                             if rem > 0:
-                                upsert_tabungan_dan_hutang(target_cursor, acc, kode, rem, 'tambah', tanggal_dibuat=tgl)
+                                upsert_tabungan_dan_hutang(target_cursor, item_acc, kode, rem, 'tambah', tanggal_dibuat=tgl)
                         else:
                             target_cursor.execute(
                                 "UPDATE tabungan_dan_hutang SET qty = qty - %s WHERE urutan = %s",
                                 (q, debt_urutan)
                             )
                     else:
-                        upsert_tabungan_dan_hutang(target_cursor, acc, kode, q, 'tambah', tanggal_dibuat=tgl)
+                        upsert_tabungan_dan_hutang(target_cursor, item_acc, kode, q, 'tambah', tanggal_dibuat=tgl)
                     
     elif global_gap > 0.001:
         # Addition gap
         gap_to_add = global_gap
-        target_cursor.execute("""
-            SELECT DISTINCT TGL_JUAL, F_JUAL FROM djual
-            WHERE ACC = %s AND TGL_JUAL >= %s AND TGL_JUAL <= %s
-        """, (acc, start_date, end_date))
+        target_cursor.execute(f"""
+            SELECT DISTINCT TGL_JUAL, F_JUAL, ACC FROM djual
+            WHERE ACC IN ({placeholders}) AND TGL_JUAL >= %s AND TGL_JUAL <= %s
+        """, (*acc_tuple, start_date, end_date))
         r_rows = target_cursor.fetchall()
         if r_rows:
-            tgl_jual, f_jual = random.choice(r_rows)
+            tgl_jual, f_jual, item_acc = random.choice(r_rows)
             
             target_cursor.execute(
-                "SELECT urutan, kode_brg, qty FROM tabungan_dan_hutang WHERE acc = %s AND tipe = 'tambah' AND qty > 0.0",
-                (acc,)
+                f"SELECT urutan, kode_brg, qty, acc FROM tabungan_dan_hutang WHERE acc IN ({placeholders}) AND tipe = 'tambah' AND qty > 0.0",
+                (*acc_tuple,)
             )
             savings = target_cursor.fetchall()
             valid_savings = []
             for s_row in savings:
-                s_urutan, s_kode, s_qty = s_row
+                s_urutan, s_kode, s_qty, s_acc = s_row
                 if abs(s_qty) < 0.001:
                     target_cursor.execute("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (s_urutan,))
                     continue
                 source_cursor.execute(
                     "SELECT HRG_JUAL, HRG_BELI, PAJAK FROM barang WHERE ACC = %s AND KODE_BRG = %s",
-                    (acc, s_kode)
+                    (s_acc, s_kode)
                 )
                 b_row = source_cursor.fetchone()
                 if b_row and b_row[2] == 1:
@@ -627,7 +636,7 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                         
                         target_cursor.execute(
                             "SELECT urutan FROM djual WHERE ACC = %s AND TGL_JUAL = %s AND F_JUAL = %s AND KODE_BRG = %s",
-                            (acc, tgl_jual, f_jual, vs['kode_brg'])
+                            (item_acc, tgl_jual, f_jual, vs['kode_brg'])
                         )
                         existing_row = target_cursor.fetchone()
                         if existing_row:
@@ -636,17 +645,17 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                             target_cursor.execute(
                                 "INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN) "
                                 "VALUES (%s, %s, %s, %s, %s, %s, %s, 0.0, 0.0, 0.0, 0.0, 10.0)",
-                                (tgl_jual, f_jual, acc, vs['kode_brg'], k, vs['hrg_beli'], vs['price'])
+                                (tgl_jual, f_jual, item_acc, vs['kode_brg'], k, vs['hrg_beli'], vs['price'])
                             )
                         gap_to_add -= k * vs['price']
 
                         if log_callback and callable(log_callback):
-                            log_callback(f"Action: Distribute Addition Gap (Savings) | Receipt: {f_jual} | Product: {vs['kode_brg']} | Qty Added: {k} | Value: {k * vs['price']} | Remaining Gap: {gap_to_add}")
+                            log_callback(f"[{item_acc}] Action: Distribute Addition Gap (Savings) | Receipt: {f_jual} | Product: {vs['kode_brg']} | Qty Added: {k} | Value: {k * vs['price']} | Remaining Gap: {gap_to_add}")
                         
             if gap_to_add > 0.001:
                 source_cursor.execute(
-                    "SELECT KODE_BRG, HRG_JUAL, HRG_BELI FROM barang WHERE ACC = %s AND PAJAK = 1",
-                    (acc,)
+                    f"SELECT KODE_BRG, HRG_JUAL, HRG_BELI FROM barang WHERE ACC IN ({placeholders}) AND PAJAK = 1",
+                    (*acc_tuple,)
                 )
                 ppn_products = source_cursor.fetchall()
                 if ppn_products:
@@ -675,7 +684,7 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                         p_code, p_price, p_beli = best_p
                         target_cursor.execute(
                             "SELECT urutan FROM djual WHERE ACC = %s AND TGL_JUAL = %s AND F_JUAL = %s AND KODE_BRG = %s",
-                            (acc, tgl_jual, f_jual, p_code)
+                            (item_acc, tgl_jual, f_jual, p_code)
                         )
                         existing_row = target_cursor.fetchone()
                         if existing_row:
@@ -684,14 +693,14 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                             target_cursor.execute(
                                 "INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN) "
                                 "VALUES (%s, %s, %s, %s, %s, %s, %s, 0.0, 0.0, 0.0, 0.0, 10.0)",
-                                (tgl_jual, f_jual, acc, p_code, best_k, p_beli, p_price)
+                                (tgl_jual, f_jual, item_acc, p_code, best_k, p_beli, p_price)
                             )
-                        settle_debt_with_savings(target_cursor, acc, p_code, best_k, tanggal_dibuat=tgl_jual)
+                        settle_debt_with_savings(target_cursor, acc_tuple, item_acc, p_code, best_k, tanggal_dibuat=tgl_jual)
                         
                         gap_to_add -= best_k * p_price
 
                         if log_callback and callable(log_callback):
-                            log_callback(f"Action: Distribute Addition Gap (Injection) | Receipt: {f_jual} | Product: {p_code} | Qty Injected: {best_k} | Value: {best_k * p_price} | Remaining Gap: {gap_to_add}")
+                            log_callback(f"[{item_acc}] Action: Distribute Addition Gap (Injection) | Receipt: {f_jual} | Product: {p_code} | Qty Injected: {best_k} | Value: {best_k * p_price} | Remaining Gap: {gap_to_add}")
 
     if log_callback and callable(log_callback):
         final_gap = 0.0

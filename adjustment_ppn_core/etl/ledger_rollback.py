@@ -9,12 +9,14 @@ def rollback_savings_in_range(target_conn, acc, start_date, end_date):
         
         # 1. Fetch consumed savings logs
         if acc is not None:
-            cursor.execute("""
+            acc_tuple = (acc,) if isinstance(acc, str) else acc
+            placeholders = ", ".join(["%s"] * len(acc_tuple))
+            cursor.execute(f"""
                 SELECT l.id_log, l.id_tabungan, l.qty_dipakai
                 FROM log_mutasi_tabungan l
                 JOIN tabungan_dan_hutang t ON l.id_tabungan = t.urutan
-                WHERE l.tanggal_dipakai >= %s AND l.tanggal_dipakai <= %s AND t.acc = %s
-            """, (start_date, end_date, acc))
+                WHERE l.tanggal_dipakai >= %s AND l.tanggal_dipakai <= %s AND t.acc IN ({placeholders})
+            """, (start_date, end_date, *acc_tuple))
         else:
             cursor.execute("""
                 SELECT l.id_log, l.id_tabungan, l.qty_dipakai
@@ -37,10 +39,12 @@ def rollback_savings_in_range(target_conn, acc, start_date, end_date):
             
         # 3. Delete newly created rows in tabungan_dan_hutang
         if acc is not None:
-            cursor.execute("""
+            acc_tuple = (acc,) if isinstance(acc, str) else acc
+            placeholders = ", ".join(["%s"] * len(acc_tuple))
+            cursor.execute(f"""
                 DELETE FROM tabungan_dan_hutang
-                WHERE tanggal_dibuat >= %s AND tanggal_dibuat <= %s AND acc = %s
-            """, (start_date, end_date, acc))
+                WHERE tanggal_dibuat >= %s AND tanggal_dibuat <= %s AND acc IN ({placeholders})
+            """, (start_date, end_date, *acc_tuple))
         else:
             cursor.execute("""
                 DELETE FROM tabungan_dan_hutang

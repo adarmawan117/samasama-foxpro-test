@@ -455,7 +455,7 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         
         # Insert initial savings: 2 Baju (BRG001) which costs 10,000 each
         initial_savings = [
-            {"acc": "001", "kode_brg": "BRG001", "qty": 2.0, "tipe": "tambah", "tanggal_dibuat": "2026-06-10"}
+            {"acc": "001", "kode_brg": "BRG001", "qty": 2.0, "tipe": "tambah", "tanggal_dibuat": "2026-05-15"}
         ]
         insert_data(tgt_conn, 'tabungan_dan_hutang', initial_savings)
         
