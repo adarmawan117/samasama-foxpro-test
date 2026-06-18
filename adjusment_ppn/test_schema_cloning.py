@@ -33,7 +33,7 @@ from proses_adjustment_pajak import (
     check_target_db_exists,
     clone_full_database
 )
-from proses_adjustment_pajak_gui import (
+from adjustment_ppn_gui import (
     TestConnectionWorker,
     WorkerThread,
     CloneWorkerThread,
@@ -304,8 +304,8 @@ class TestPyQt5SignalTriggers(unittest.TestCase):
         if cls.app is None:
             cls.app = QApplication(sys.argv)
 
-    @patch("proses_adjustment_pajak_gui.check_target_db_exists")
-    @patch("proses_adjustment_pajak_gui.test_dual_connection")
+    @patch("adjustment_ppn_gui.workers.check_target_db_exists")
+    @patch("adjustment_ppn_gui.workers.test_dual_connection")
     def test_connection_worker_success(self, mock_test_conn, mock_check_target):
         """Verify TestConnectionWorker emits success signal upon successful test connection."""
         mock_check_target.return_value = True
@@ -333,8 +333,8 @@ class TestPyQt5SignalTriggers(unittest.TestCase):
         self.assertEqual(len(signals_captured), 1)
         self.assertEqual(signals_captured[0], (True, ""))
 
-    @patch("proses_adjustment_pajak_gui.check_target_db_exists")
-    @patch("proses_adjustment_pajak_gui.test_dual_connection")
+    @patch("adjustment_ppn_gui.workers.check_target_db_exists")
+    @patch("adjustment_ppn_gui.workers.test_dual_connection")
     def test_connection_worker_failure(self, mock_test_conn, mock_check_target):
         """Verify TestConnectionWorker emits failure signals with error details."""
         mock_check_target.return_value = True
@@ -363,11 +363,11 @@ class TestPyQt5SignalTriggers(unittest.TestCase):
         self.assertEqual(signals_captured[0][0], False)
         self.assertIn("Connection Refused", signals_captured[0][1])
 
-    @patch("proses_adjustment_pajak_gui.check_target_db_exists")
-    @patch("proses_adjustment_pajak_gui.get_db_connection")
-    @patch("proses_adjustment_pajak_gui.create_tabungan_dan_hutang_table")
-    @patch("proses_adjustment_pajak_gui.check_transactions_exist_in_range")
-    @patch("proses_adjustment_pajak_gui.proses_pengurangan_omset")
+    @patch("adjustment_ppn_gui.workers.check_target_db_exists")
+    @patch("adjustment_ppn_gui.workers.get_db_connection")
+    @patch("adjustment_ppn_gui.workers.create_tabungan_dan_hutang_table")
+    @patch("adjustment_ppn_gui.workers.check_transactions_exist_in_range")
+    @patch("adjustment_ppn_gui.workers.proses_pengurangan_omset")
     def test_worker_thread_reduction_success(self, mock_proses_red, mock_check_trx, mock_create_tbl, mock_get_conn, mock_exists):
         """Verify WorkerThread reduction triggers proper progression and finish signals."""
         mock_exists.return_value = True
@@ -409,7 +409,7 @@ class TestPyQt5SignalTriggers(unittest.TestCase):
         self.assertEqual(finished_results[0][0], True)
         self.assertEqual(finished_results[0][1], -150.00)
 
-    @patch("proses_adjustment_pajak_gui.check_target_db_exists")
+    @patch("adjustment_ppn_gui.workers.check_target_db_exists")
     def test_worker_thread_raises_db_not_found(self, mock_exists):
         """Verify WorkerThread raises DatabaseNotFoundError and emits db_not_found_signal if target DB does not exist."""
         mock_exists.return_value = False
@@ -450,8 +450,8 @@ class TestGUIPopupFlows(unittest.TestCase):
         if cls.app is None:
             cls.app = QApplication(sys.argv)
 
-    @patch("proses_adjustment_pajak_gui.QMessageBox.question")
-    @patch("proses_adjustment_pajak_gui.CloneWorkerThread")
+    @patch("adjustment_ppn_gui.main_window.QMessageBox.question")
+    @patch("adjustment_ppn_gui.main_window.CloneWorkerThread")
     def test_on_db_not_found_yes_flow(self, mock_clone_worker_cls, mock_question):
         """Verify that choosing Yes in the popup spawns the CloneWorkerThread."""
         mock_question.return_value = QMessageBox.Yes
@@ -471,7 +471,7 @@ class TestGUIPopupFlows(unittest.TestCase):
         # Verify CloneWorkerThread was started
         mock_worker.start.assert_called_once()
 
-    @patch("proses_adjustment_pajak_gui.QMessageBox.question")
+    @patch("adjustment_ppn_gui.main_window.QMessageBox.question")
     def test_on_db_not_found_no_flow(self, mock_question):
         """Verify that choosing No in the popup unlocks GUI and aborts process."""
         mock_question.return_value = QMessageBox.No
@@ -484,8 +484,8 @@ class TestGUIPopupFlows(unittest.TestCase):
         # Verify inputs are re-enabled
         self.assertTrue(app_gui.source_host_input.isEnabled())
 
-    @patch("proses_adjustment_pajak_gui.QMessageBox.information")
-    @patch("proses_adjustment_pajak_gui.ProsesAdjustmentPajakApp.click_proses")
+    @patch("adjustment_ppn_gui.main_window.QMessageBox.information")
+    @patch("adjustment_ppn_gui.main_window.ProsesAdjustmentPajakApp.click_proses")
     def test_on_clone_finished_success_restarts_process(self, mock_click_proses, mock_info):
         """Verify that a successful clone displays an information dialog and restarts adjustment process."""
         app_gui = ProsesAdjustmentPajakApp()

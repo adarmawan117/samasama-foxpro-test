@@ -17,7 +17,7 @@ from PyQt5.QtTest import QTest
 from PyQt5.QtCore import Qt, QDate, QEventLoop, QTimer
 
 # Import the GUI application class
-from proses_adjustment_pajak_gui import ProsesAdjustmentPajakApp, WorkerThread, TestConnectionWorker
+from adjustment_ppn_gui import ProsesAdjustmentPajakApp, WorkerThread, TestConnectionWorker
 
 def create_mock_db(db_path):
     """Creates a mock database matching schemas expected by the adjustment backend."""
@@ -526,7 +526,7 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         """Verifies that Test Connection button handles failures correctly."""
         # Mock test_dual_connection to fail
         from unittest.mock import patch
-        with patch("proses_adjustment_pajak_gui.test_dual_connection") as mock_test_conn:
+        with patch("adjustment_ppn_gui.workers.test_dual_connection") as mock_test_conn:
             mock_test_conn.side_effect = Exception("Connection refused by target database")
             
             self.window.source_db_input.setText(self.db_path)
@@ -571,9 +571,13 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         self.msg_box_calls.clear()
 
         # Scenario 3: Valid database and account, but empty target PPN
-        self.window.combo_acc.addItem("Account 001", "001")
-        self.window.combo_acc.setCurrentIndex(1) # Account 001
+        self.window.db_path_input.setText(self.db_path)
+        self.window.target_db_input.setText(self.db_path)
+        self.window.load_accounts()
+        QApplication.processEvents()
+        self.window.combo_acc.setCurrentIndex(1)
         self.window.target_ppn_input.setText("")
+        QApplication.processEvents()
         self.window.click_proses()
         self.assertTrue(any("Please input target PPN" in call[2] for call in self.msg_box_calls))
 

@@ -18,7 +18,7 @@ from proses_adjustment_pajak import (
     get_db_connection,
     test_dual_connection,
 )
-from proses_adjustment_pajak_gui import (
+from adjustment_ppn_gui import (
     ProsesAdjustmentPajakApp,
     TestConnectionWorker,
 )

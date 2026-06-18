@@ -18,7 +18,7 @@ from PyQt5.QtCore import QEventLoop, QTimer, QThread
 from PyQt5.QtTest import QTest
 
 from proses_adjustment_pajak import clone_full_database
-from proses_adjustment_pajak_gui import ProsesAdjustmentPajakApp, CloneWorkerThread, TestConnectionWorker
+from adjustment_ppn_gui import ProsesAdjustmentPajakApp, CloneWorkerThread, TestConnectionWorker
 
 class TestStressChallenger(unittest.TestCase):
     @classmethod

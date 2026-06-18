@@ -25,7 +25,7 @@ from proses_adjustment_pajak import (
     sync_raw_transactions_in_range,
     RerunDetectedException
 )
-from proses_adjustment_pajak_gui import WorkerThread
+from adjustment_ppn_gui import WorkerThread
 
 
 class TestIdempotentETL(unittest.TestCase):
@@ -170,10 +170,10 @@ class TestIdempotentETL(unittest.TestCase):
         src_conn.close()
         tgt_conn.close()
 
-    @patch("proses_adjustment_pajak_gui.check_target_db_exists")
-    @patch("proses_adjustment_pajak_gui.get_db_connection")
-    @patch("proses_adjustment_pajak_gui.create_tabungan_dan_hutang_table")
-    @patch("proses_adjustment_pajak_gui.check_transactions_exist_in_range")
+    @patch("adjustment_ppn_gui.workers.check_target_db_exists")
+    @patch("adjustment_ppn_gui.workers.get_db_connection")
+    @patch("adjustment_ppn_gui.workers.create_tabungan_dan_hutang_table")
+    @patch("adjustment_ppn_gui.workers.check_transactions_exist_in_range")
     def test_worker_thread_emits_rerun_warning_signal(self, mock_exist_in_range, mock_create_tbl, mock_get_conn, mock_exists):
         """
         Verify that WorkerThread emits rerun_warning_signal when target transactions
