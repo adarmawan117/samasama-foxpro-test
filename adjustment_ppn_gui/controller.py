@@ -4,7 +4,7 @@ import csv
 import sqlite3
 from PyQt5.QtCore import QObject
 from .workers import TestConnectionWorker, WorkerThread, CloneWorkerThread
-from proses_adjustment_pajak import get_db_connection
+from adjustment_ppn_core.database.connection import get_db_connection
 
 class AdjustmentPajakController(QObject):
     def __init__(self, view):

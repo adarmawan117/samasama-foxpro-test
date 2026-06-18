@@ -8,7 +8,8 @@ import sqlite3
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-import proses_adjustment_pajak
+from adjustment_ppn_core.database.connection import get_db_connection
+from adjustment_ppn_core.etl.ledger_rollback import rollback_savings_in_range
 from test_cases import DEFAULT_BARANG
 from test_infra import create_tables, insert_data
 
@@ -60,8 +61,8 @@ class TestLedgerRollback(unittest.TestCase):
         tgt_conn.close()
         
         is_sandbox = True
-        source_conn = proses_adjustment_pajak.get_db_connection(sandbox=is_sandbox, database=self.src_db_path)
-        target_conn = proses_adjustment_pajak.get_db_connection(sandbox=is_sandbox, database=self.tgt_db_path)
+        source_conn = get_db_connection(sandbox=is_sandbox, database=self.src_db_path)
+        target_conn = get_db_connection(sandbox=is_sandbox, database=self.tgt_db_path)
         
         cursor_tgt = target_conn.cursor()
         cursor_tgt.execute("INSERT INTO log_mutasi_tabungan (id_tabungan, qty_dipakai, tanggal_dipakai) VALUES (?, ?, ?)", (saving_id, 0.333, "2026-06-16"))
@@ -69,7 +70,7 @@ class TestLedgerRollback(unittest.TestCase):
         target_conn.commit()
 
         # Call rollback_savings_in_range
-        proses_adjustment_pajak.rollback_savings_in_range(target_conn, "001", "2026-06-01", "2026-06-30")
+        rollback_savings_in_range(target_conn, "001", "2026-06-01", "2026-06-30")
         
         cursor_tgt.execute("SELECT qty FROM tabungan_dan_hutang WHERE urutan = ?", (saving_id,))
         restored_qty = cursor_tgt.fetchone()[0]
@@ -99,10 +100,10 @@ class TestLedgerRollback(unittest.TestCase):
         src_conn.close()
         tgt_conn.close()
         
-        source_conn = proses_adjustment_pajak.get_db_connection(sandbox=True, database=self.src_db_path)
-        target_conn = proses_adjustment_pajak.get_db_connection(sandbox=True, database=self.tgt_db_path)
+        source_conn = get_db_connection(sandbox=True, database=self.src_db_path)
+        target_conn = get_db_connection(sandbox=True, database=self.tgt_db_path)
         
-        proses_adjustment_pajak.rollback_savings_in_range(target_conn, "001", "2026-06-01", "2026-06-30")
+        rollback_savings_in_range(target_conn, "001", "2026-06-01", "2026-06-30")
         
         cursor_tgt = target_conn.cursor()
         cursor_tgt.execute("SELECT COUNT(*) FROM tabungan_dan_hutang WHERE urutan = ?", (saving_id,))

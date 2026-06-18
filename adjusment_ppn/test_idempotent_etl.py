@@ -19,11 +19,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QEventLoop, QTimer
 
-from proses_adjustment_pajak import (
+from adjustment_ppn_core.database.connection import RerunDetectedException
+from adjustment_ppn_core.etl.sync_manager import (
     check_transactions_exist_in_range,
     purge_transactions_in_range,
-    sync_raw_transactions_in_range,
-    RerunDetectedException
+    sync_raw_transactions_in_range
 )
 from adjustment_ppn_gui import WorkerThread
 
@@ -87,7 +87,7 @@ class TestIdempotentETL(unittest.TestCase):
         tgt_conn = sqlite3.connect(":memory:")
 
         # We must register DATE_FORMAT dummy for SQLite compatibility wrapper
-        from proses_adjustment_pajak import SQLiteConnectionWrapper
+        from adjustment_ppn_core.database.connection import SQLiteConnectionWrapper
         src_conn = SQLiteConnectionWrapper(src_conn)
         tgt_conn = SQLiteConnectionWrapper(tgt_conn)
 

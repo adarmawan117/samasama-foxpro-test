@@ -1,100 +1,32 @@
 # -*- coding: utf-8 -*-
 """
-Database connection, compatibility, and initialization helpers for the tax adjustment process.
-Supports MySQL mode (default) and SQLite Sandbox mode (--sandbox).
+Main CLI entry point for the tax adjustment process.
+Imports from the modular adjustment_ppn_core package.
 """
 
 import os
 import sys
-import re
-import sqlite3
-import datetime
+import argparse
 
-from adjustment_ppn_core.database.sqlite_translator import *
-from adjustment_ppn_core.database.connection import *
-from adjustment_ppn_core.schema.migrations import *
-from adjustment_ppn_core.schema.cloning import *
-
-
-# ==========================================
-# SQLITE COMPATIBILITY & UDF REGISTER
-# ==========================================
-
-
-
-
-
-
-
-# ==========================================
-# SQLITE CONNECTION WRAPPER
-# ==========================================
-
-
-
-
-# ==========================================
-# DATABASE SETUP & CONNECTION HELPERS
-# ==========================================
-
-
-
-class DatabaseNotFoundError(Exception):
-    """Exception raised when the target database does not exist."""
-    pass
-
-
-class RerunDetectedException(Exception):
-    """Exception raised when target transactions exist in the range and force rerun is not specified."""
-    pass
-
-
-from adjustment_ppn_core.etl import (
-    check_transactions_exist_in_range as _check_transactions_exist_in_range,
-    rollback_savings_in_range as _rollback_savings_in_range,
-    purge_transactions_in_range as _purge_transactions_in_range,
-    sync_raw_transactions_in_range as _sync_raw_transactions_in_range
+from adjustment_ppn_core.database.connection import (
+    get_db_connection,
+    test_dual_connection,
+    DatabaseNotFoundError,
+    RerunDetectedException
 )
-from adjustment_ppn_core.calculator import (
-    proses_pengurangan_omset as _proses_pengurangan_omset,
-    proses_penambahan_omset as _proses_penambahan_omset,
-    distribusikan_global_gap as _distribusikan_global_gap,
-    upsert_tabungan_dan_hutang as _upsert_tabungan_dan_hutang,
-    settle_debt_with_savings as _settle_debt_with_savings,
+from adjustment_ppn_core.schema.migrations import (
+    create_tabungan_dan_hutang_table,
+    create_log_mutasi_tabungan_table
 )
-
-
-def check_transactions_exist_in_range(target_conn, acc, start_date, end_date):
-    """
-    Checks if transactions exist in the target database in the specified range.
-    """
-    return _check_transactions_exist_in_range(target_conn, acc, start_date, end_date)
-
-
-def rollback_savings_in_range(target_conn, acc, start_date, end_date):
-    """
-    Rolls back savings adjustments within the specified range.
-    Restores qty for consumed savings in log_mutasi_tabungan and deletes the logs.
-    Deletes newly created rows in tabungan_dan_hutang.
-    """
-    return _rollback_savings_in_range(target_conn, acc, start_date, end_date)
-
-
-def purge_transactions_in_range(target_conn, acc, start_date, end_date):
-    """
-    Deletes records from djual, drjual, dbeli, and drbeli in target database within range.
-    """
-    return _purge_transactions_in_range(target_conn, acc, start_date, end_date)
-
-
-def sync_raw_transactions_in_range(source_conn, target_conn, acc, start_date, end_date):
-    """
-    Synchronizes raw transactions from source to target database in the specified range.
-    First purges any existing target transactions to ensure idempotency.
-    """
-    return _sync_raw_transactions_in_range(source_conn, target_conn, acc, start_date, end_date)
-
-
+from adjustment_ppn_core.etl.sync_manager import (
+    check_transactions_exist_in_range,
+    sync_raw_transactions_in_range
+)
+from adjustment_ppn_core.calculator.adjustment import (
+    proses_pengurangan_omset,
+    proses_penambahan_omset,
+    distribusikan_global_gap
+)
 
 def is_running_in_test_infra():
     """
@@ -102,68 +34,7 @@ def is_running_in_test_infra():
     """
     return os.environ.get("PPN_TEST_INFRA") == "true"
 
-
-
-
-
-def stream_sql_statements(file_path):
-    """
-    Yields SQL statements from a file by buffering until a line ends with a semicolon.
-    This prevents loading huge files (like barang.sql) into memory all at once.
-    """
-    buffer = []
-    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-        for line in f:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            buffer.append(line)
-            if stripped.endswith(';'):
-                statement = "".join(buffer)
-                buffer = []
-                yield statement
-        if buffer:
-            yield "".join(buffer)
-
-
-
-def upsert_tabungan_dan_hutang(cursor, acc, kode_brg, qty, tipe, tanggal_dibuat=None):
-    """
-    Database-agnostic upsert for tabungan_dan_hutang.
-    Checks if a record with (acc, kode_brg, tipe) exists.
-    If yes, performs an UPDATE adding the qty.
-    If no, performs an INSERT.
-    """
-    return _upsert_tabungan_dan_hutang(cursor, acc, kode_brg, qty, tipe, tanggal_dibuat)
-
-def settle_debt_with_savings(cursor, acc, kode_brg, best_k, tanggal_dibuat=None):
-    """
-    Settle the newly added quantity (which is a debt/kurang of best_k) 
-    using any existing savings (tambah) for the same product first.
-    If there is remaining debt, record it as 'kurang'.
-    """
-    return _settle_debt_with_savings(cursor, acc, kode_brg, best_k, tanggal_dibuat)
-
-
-# ==========================================
-# INTERFACE CONTRACT FUNCTIONS
-# ==========================================
-
-def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date, target_ppn, log_callback=None):
-    return _proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date, target_ppn, log_callback)
-
-
-def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date, target_ppn, log_callback=None):
-    return _proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date, target_ppn, log_callback)
-
-
-def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date, global_gap, log_callback=None):
-    return _distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date, global_gap, log_callback)
-
-
-
 def parse_args(args_list=None):
-    import argparse
     parser = argparse.ArgumentParser(description="Proses Penyesuaian Pajak PPN")
     parser.add_argument("--source-host", default="localhost", help="Source database host")
     parser.add_argument("--source-port", type=int, default=3306, help="Source database port")
@@ -185,7 +56,6 @@ def parse_args(args_list=None):
     parser.add_argument("--force-rerun", action="store_true", help="Force rerun adjustment by purging and syncing raw data")
 
     return parser.parse_args(args_list)
-
 
 if __name__ == '__main__':
     args = parse_args()

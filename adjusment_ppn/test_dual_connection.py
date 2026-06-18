@@ -4,10 +4,11 @@ import os
 import unittest
 from unittest.mock import patch, MagicMock
 
-# Add current directory to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from proses_adjustment_pajak import parse_args, test_dual_connection, get_db_connection
+from run_proses_adjustment import parse_args
+from adjustment_ppn_core.database.connection import test_dual_connection, get_db_connection
 
 class TestDualConnection(unittest.TestCase):
     def test_argparser_dual_db(self):

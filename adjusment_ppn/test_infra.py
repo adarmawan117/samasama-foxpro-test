@@ -234,7 +234,7 @@ def run_test_case(tc):
             conn.close()
         
         # Determine script path
-        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "proses_adjustment_pajak.py")
+        script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "run_proses_adjustment.py")
         
         # Prepare run arguments
         cmd = [
@@ -338,7 +338,7 @@ def main():
     summary_md = f"""# E2E Test Suite Executable Summary Report
 
 Date executed: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-Mock script path: `python_test/proses_adjustment_pajak.py`
+Mock script path: `python_test/run_proses_adjustment.py`
 
 ## Performance Dashboard
 

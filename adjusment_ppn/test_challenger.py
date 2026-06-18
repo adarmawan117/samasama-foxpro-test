@@ -14,7 +14,7 @@ from PyQt5.QtTest import QTest
 from PyQt5.QtCore import Qt, QEventLoop, QTimer
 
 # Import application components
-from proses_adjustment_pajak import (
+from adjustment_ppn_core.database.connection import (
     get_db_connection,
     test_dual_connection,
 )

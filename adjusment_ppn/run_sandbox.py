@@ -12,11 +12,9 @@ import sqlite3
 script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(script_dir)
 
-from proses_adjustment_pajak import (
-    initialize_sandbox_db,
-    get_db_connection,
-    create_tabungan_dan_hutang_table
-)
+from adjustment_ppn_core.schema.cloning import initialize_sandbox_db
+from adjustment_ppn_core.database.connection import get_db_connection
+from adjustment_ppn_core.schema.migrations import create_tabungan_dan_hutang_table
 
 def run_sanity_checks():
     workspace_root = os.path.dirname(os.path.dirname(script_dir))

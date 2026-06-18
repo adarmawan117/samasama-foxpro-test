@@ -21,15 +21,19 @@ from PyQt5.QtWidgets import QApplication, QMessageBox
 from PyQt5.QtCore import QEventLoop, QTimer, QThread
 
 # Import target functions and classes
-from proses_adjustment_pajak import (
+from adjustment_ppn_core.database.sqlite_translator import (
     parse_create_table_to_sqlite,
     make_sqlite_compatible,
-    translate_query,
+    translate_query
+)
+from adjustment_ppn_core.database.connection import (
     SQLiteCursorWrapper,
     SQLiteConnectionWrapper,
     test_dual_connection,
+    DatabaseNotFoundError
+)
+from adjustment_ppn_core.schema.cloning import (
     stream_sql_statements,
-    DatabaseNotFoundError,
     check_target_db_exists,
     clone_full_database
 )

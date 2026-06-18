@@ -18,7 +18,10 @@ import unittest
 # Add directory of this file to sys.path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-import proses_adjustment_pajak
+from adjustment_ppn_core.schema.migrations import (
+    create_tabungan_dan_hutang_table,
+    create_log_mutasi_tabungan_table
+)
 import test_infra
 
 class TestSchemaVerification(unittest.TestCase):
@@ -28,8 +31,8 @@ class TestSchemaVerification(unittest.TestCase):
         conn.execute("PRAGMA foreign_keys = ON;")
         
         # Create tables
-        proses_adjustment_pajak.create_tabungan_dan_hutang_table(conn, is_sqlite=True)
-        proses_adjustment_pajak.create_log_mutasi_tabungan_table(conn, is_sqlite=True)
+        create_tabungan_dan_hutang_table(conn, is_sqlite=True)
+        create_log_mutasi_tabungan_table(conn, is_sqlite=True)
         
         # Verify tabungan_dan_hutang columns
         cursor = conn.cursor()

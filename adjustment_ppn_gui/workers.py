@@ -3,22 +3,32 @@ import sqlite3
 import traceback
 from PyQt5.QtCore import QThread, pyqtSignal
 
-# Import backend functions
-from proses_adjustment_pajak import (
+# Import backend functions from modular paths
+from adjustment_ppn_core.database.connection import (
     get_db_connection,
     test_dual_connection,
-    create_tabungan_dan_hutang_table,
+    DatabaseNotFoundError,
+    RerunDetectedException
+)
+from adjustment_ppn_core.schema.migrations import (
+    create_tabungan_dan_hutang_table
+)
+from adjustment_ppn_core.calculator.adjustment import (
     proses_pengurangan_omset,
     proses_penambahan_omset,
-    distribusikan_global_gap,
+    distribusikan_global_gap
+)
+from adjustment_ppn_core.schema.cloning import (
     check_target_db_exists,
-    clone_full_database,
-    DatabaseNotFoundError,
+    clone_full_database
+)
+from adjustment_ppn_core.etl.sync_manager import (
     check_transactions_exist_in_range,
     purge_transactions_in_range,
-    sync_raw_transactions_in_range,
-    rollback_savings_in_range,
-    RerunDetectedException
+    sync_raw_transactions_in_range
+)
+from adjustment_ppn_core.etl.ledger_rollback import (
+    rollback_savings_in_range
 )
 
 class TestConnectionWorker(QThread):
@@ -37,7 +47,7 @@ class TestConnectionWorker(QThread):
             
             # 1. Test Source DB first
             try:
-                from proses_adjustment_pajak import get_db_connection
+                from adjustment_ppn_core.database.connection import get_db_connection
                 conn = get_db_connection(sandbox=is_sandbox, **self.source_config)
                 if hasattr(conn, 'close'):
                     conn.close()

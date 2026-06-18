@@ -8,7 +8,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from test_cases import TEST_CASES, DEFAULT_BARANG
 from test_infra import create_tables, insert_data, sqlite_date_format, fetch_table, compare_table_data
 
-script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "proses_adjustment_pajak.py")
+script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "run_proses_adjustment.py")
 
 for tc in TEST_CASES:
     if tc['id'] in ['TC-T1-17', 'TC-T2-09', 'TC-T2-11', 'TC-T2-15', 'TC-T2-19', 'TC-T3-02', 'TC-T4-02', 'TC-T4-03', 'TC-T4-04']:

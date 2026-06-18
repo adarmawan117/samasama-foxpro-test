@@ -3,6 +3,25 @@ import sys
 import sqlite3
 from .sqlite_translator import sqlite_date_format, translate_query
 
+__all__ = [
+    'SQLiteCursorWrapper',
+    'SQLiteConnectionWrapper',
+    'MySQLConnectionWrapper',
+    'get_db_connection',
+    'test_dual_connection',
+    'DatabaseNotFoundError',
+    'RerunDetectedException'
+]
+
+class DatabaseNotFoundError(Exception):
+    """Exception raised when the target database does not exist."""
+    pass
+
+class RerunDetectedException(Exception):
+    """Exception raised when target transactions exist in the range and force rerun is not specified."""
+    pass
+
+
 class SQLiteCursorWrapper:
     def __init__(self, cursor):
         self._cursor = cursor

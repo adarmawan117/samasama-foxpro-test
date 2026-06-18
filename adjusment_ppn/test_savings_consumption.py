@@ -18,7 +18,13 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import the core logic functions and test case specifications
-import proses_adjustment_pajak
+from adjustment_ppn_core.database.connection import get_db_connection, SQLiteConnectionWrapper
+from adjustment_ppn_core.calculator.adjustment import (
+    proses_pengurangan_omset,
+    proses_penambahan_omset,
+    distribusikan_global_gap
+)
+from adjustment_ppn_core.etl.ledger_rollback import rollback_savings_in_range
 from test_cases import get_test_cases, DEFAULT_BARANG
 from test_infra import sqlite_date_format, create_tables, insert_data, compare_table_data
 
@@ -186,11 +192,11 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         tgt_conn.close()
         
         is_sandbox = True
-        source_conn = proses_adjustment_pajak.get_db_connection(sandbox=is_sandbox, database=self.src_db_path)
-        target_conn = proses_adjustment_pajak.get_db_connection(sandbox=is_sandbox, database=self.tgt_db_path)
+        source_conn = get_db_connection(sandbox=is_sandbox, database=self.src_db_path)
+        target_conn = get_db_connection(sandbox=is_sandbox, database=self.tgt_db_path)
         
         # Run adjustment addition in-process
-        proses_adjustment_pajak.proses_penambahan_omset(
+        proses_penambahan_omset(
             source_conn, target_conn, acc="001", 
             start_date="2026-06-01", end_date="2026-06-30", 
             target_ppn=10000.0
@@ -246,13 +252,13 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         self.assertEqual(res, 1, "Foreign keys must be enabled on target connection")
         
         # We call the main execution with raw SQLite connection wrappers to trigger SQLite execution
-        wrapper_src = proses_adjustment_pajak.SQLiteConnectionWrapper(source_conn)
-        wrapper_tgt = proses_adjustment_pajak.SQLiteConnectionWrapper(target_conn)
+        wrapper_src = SQLiteConnectionWrapper(source_conn)
+        wrapper_tgt = SQLiteConnectionWrapper(target_conn)
         
         # This calls the processes that will trigger UPDATE qty = 0.0 (soft delete) instead of DELETE
         # The run must succeed with no IntegrityError because soft deletes are used!
         try:
-            proses_adjustment_pajak.proses_penambahan_omset(
+            proses_penambahan_omset(
                 wrapper_src, wrapper_tgt, acc="001", 
                 start_date="2026-06-01", end_date="2026-06-30", 
                 target_ppn=10000.0
@@ -311,19 +317,19 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
                 
                 # Execute adjustment logic
                 if target_ppn < 0:
-                    global_gap = proses_adjustment_pajak.proses_pengurangan_omset(
+                    global_gap = proses_pengurangan_omset(
                         soft_src_conn, soft_tgt_conn, acc, start_date, end_date, target_ppn
                     )
                     if abs(global_gap) > 0.001:
-                        proses_adjustment_pajak.distribusikan_global_gap(
+                        distribusikan_global_gap(
                             soft_src_conn, soft_tgt_conn, acc, start_date, end_date, global_gap
                         )
                 elif target_ppn > 0:
-                    global_gap = proses_adjustment_pajak.proses_penambahan_omset(
+                    global_gap = proses_penambahan_omset(
                         soft_src_conn, soft_tgt_conn, acc, start_date, end_date, target_ppn
                     )
                     if abs(global_gap) > 0.001:
-                        proses_adjustment_pajak.distribusikan_global_gap(
+                        distribusikan_global_gap(
                             soft_src_conn, soft_tgt_conn, acc, start_date, end_date, global_gap
                         )
                 else:
@@ -465,11 +471,11 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         tgt_conn.close()
         
         # Establish connection wrappers
-        source_conn = proses_adjustment_pajak.get_db_connection(sandbox=True, database=self.src_db_path)
-        target_conn = proses_adjustment_pajak.get_db_connection(sandbox=True, database=self.tgt_db_path)
+        source_conn = get_db_connection(sandbox=True, database=self.src_db_path)
+        target_conn = get_db_connection(sandbox=True, database=self.tgt_db_path)
         
         # Run addition adjustment target_ppn = +10000 (draws exactly 1.0 of BRG001 from savings)
-        proses_adjustment_pajak.proses_penambahan_omset(
+        proses_penambahan_omset(
             source_conn, target_conn, acc="001", 
             start_date="2026-06-01", end_date="2026-06-30", 
             target_ppn=10000.0
@@ -499,7 +505,7 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         self.assertIsNotNone(new_saving_id)
         
         # 3. Call rollback_savings_in_range
-        proses_adjustment_pajak.rollback_savings_in_range(
+        rollback_savings_in_range(
             target_conn, acc="001", start_date="2026-06-01", end_date="2026-06-30"
         )
         
@@ -522,7 +528,7 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         os.close(empty_db_fd)
         empty_conn = sqlite3.connect(empty_db_path)
         try:
-            proses_adjustment_pajak.rollback_savings_in_range(
+            rollback_savings_in_range(
                 empty_conn, acc="001", start_date="2026-06-01", end_date="2026-06-30"
             )
             # Should not raise exception
