@@ -16,8 +16,9 @@ Dokumen ini menjelaskan langkah-langkah penggunaan sistem penyesuaian PPN besert
 
 ### 3. Melakukan Tes Koneksi
 3. Pengguna menekan tombol **Tes Koneksi** untuk memastikan kedua database dapat terhubung dengan lancar dan aman.
-   - **a. Membaca Data Cabang:** Setelah koneksi berhasil teruji, sistem akan secara otomatis membaca dan memuat seluruh daftar kode cabang (akun) yang aktif dari database asal ke dalam menu pilihan.
-   - **b. Pengaman Kegagalan:** Jika koneksi ke salah satu database gagal (misalnya karena salah ketik password atau file tidak ditemukan), sistem akan memunculkan pesan peringatan merah dan mengunci tombol proses demi menghindari kesalahan data.
+   - **a. Penyimpanan Otomatis (Auto-Save):** Jika tes koneksi berhasil, sistem akan langsung menyimpan pengaturan koneksi Anda ke dalam file `connection_settings.json` agar Anda tidak perlu mengetik ulang saat membuka aplikasi di kemudian hari.
+   - **b. Membaca Data Cabang:** Sistem akan membaca daftar kode cabang (akun) dari tabel `accinv`. Jika tabel tersebut kosong, sistem memiliki kecerdasan buatan untuk beralih (*fallback*) mencari akun yang aktif langsung dari tabel `BARANG`.
+   - **c. Pengaman Kegagalan:** Jika koneksi ke salah satu database gagal, sistem memunculkan pesan peringatan merah dan mengunci tombol proses demi menghindari kesalahan data.
 
 ### 4. Menentukan Parameter dan Target Pajak PPN
 4. Pengguna memilih cabang yang akan disesuaikan, menentukan rentang tanggal transaksi, serta memasukkan angka target pajak yang ingin dicapai.

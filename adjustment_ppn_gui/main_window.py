@@ -86,7 +86,7 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         source_group_layout.addRow("Password:", self.source_pass_input)
         
         source_db_layout = QHBoxLayout()
-        self.source_db_input = QLineEdit("source_db")
+        self.source_db_input = QLineEdit("inventory")
         self.source_db_input.setObjectName("source_db_input")
         self.db_path_input = self.source_db_input # Compatibility alias
         
@@ -209,6 +209,9 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         self.btn_test_conn.clicked.connect(self.test_conn_clicked.emit)
         self.btn_proses.clicked.connect(self.proses_clicked.emit)
         self.btn_export.clicked.connect(self.export_clicked.emit)
+
+        # Load connection settings if they exist
+        self.load_settings()
 
     # Getters
     def get_source_db(self) -> str:
@@ -386,3 +389,42 @@ class ProsesAdjustmentPajakApp(QMainWindow):
             event.ignore()
         else:
             event.accept()
+
+    def load_settings(self):
+        import json
+        import os
+        # Path to python_test/connection_settings.json
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config_path = os.path.join(base_dir, "connection_settings.json")
+        
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    data = json.load(f)
+                if 'source' in data:
+                    self.source_host_input.setText(data['source'].get('host', 'localhost'))
+                    self.source_port_input.setText(data['source'].get('port', '3306'))
+                    self.source_user_input.setText(data['source'].get('user', 'root'))
+                    self.source_pass_input.setText(data['source'].get('password', 'root'))
+                    self.source_db_input.setText(data['source'].get('database', 'inventory'))
+                if 'target' in data:
+                    self.target_host_input.setText(data['target'].get('host', 'localhost'))
+                    self.target_port_input.setText(data['target'].get('port', '3306'))
+                    self.target_user_input.setText(data['target'].get('user', 'root'))
+                    self.target_pass_input.setText(data['target'].get('password', 'root'))
+                    self.target_db_input.setText(data['target'].get('database', 'target_db'))
+                self.log_status("System: Connection settings successfully loaded from JSON.")
+            except Exception as e:
+                self.log_status(f"System: Failed to load settings: {e}")
+        else:
+            default_data = {
+                'source': {'host': 'localhost', 'port': '3306', 'user': 'root', 'password': 'root', 'database': 'inventory'},
+                'target': {'host': 'localhost', 'port': '3306', 'user': 'root', 'password': 'root', 'database': 'target_db'}
+            }
+            try:
+                with open(config_path, 'w') as f:
+                    json.dump(default_data, f, indent=4)
+                self.log_status("System: Default connection settings JSON created.")
+            except Exception as e:
+                self.log_status(f"System: Failed to create default settings: {e}")
+

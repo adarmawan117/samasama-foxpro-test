@@ -85,6 +85,7 @@ class AdjustmentPajakController(QObject):
         if reply:
             self.consent_clone = True
             self.view.consent_clone = True
+            self.save_settings()
             self.load_accounts()
             self.view.log_status("System: Database target tidak ditemukan, setuju to clone.")
             self.view.show_info_message(
@@ -101,12 +102,42 @@ class AdjustmentPajakController(QObject):
             self.view.log_status("System: Connection test failed: Database Target belum ada and user menolak clone.")
             self.view.show_critical_message("Connection Error", "Database Target belum ada.")
 
+    def save_settings(self):
+        import json
+        import os
+        source_config = {
+            'host': self.view.source_host_input.text().strip(),
+            'port': self.view.source_port_input.text().strip(),
+            'user': self.view.source_user_input.text().strip(),
+            'password': self.view.source_pass_input.text().strip(),
+            'database': self.view.source_db_input.text().strip()
+        }
+        target_config = {
+            'host': self.view.target_host_input.text().strip(),
+            'port': self.view.target_port_input.text().strip(),
+            'user': self.view.target_user_input.text().strip(),
+            'password': self.view.target_pass_input.text().strip(),
+            'database': self.view.target_db_input.text().strip()
+        }
+        data = {'source': source_config, 'target': target_config}
+        
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config_path = os.path.join(base_dir, "connection_settings.json")
+        
+        try:
+            with open(config_path, 'w') as f:
+                json.dump(data, f, indent=4)
+            self.view.log_status("System: Connection settings automatically saved to JSON.")
+        except Exception as e:
+            self.view.log_status(f"System Error: Failed to save connection settings: {e}")
+
     def on_test_conn_finished(self, success, err_msg):
         self.view.set_inputs_enabled(True)
         self.view.set_process_running(False)
         if success:
+            self.save_settings()
             self.view.show_info_message("Success", "Connection test succeeded!")
-            self.view.log_status("System: Connection test succeeded. Loading accounts...")
+            self.view.log_status("System: Connection test succeeded. Settings saved. Loading accounts...")
             self.load_accounts()
         else:
             self.view.combo_acc.setEnabled(False)
@@ -137,6 +168,9 @@ class AdjustmentPajakController(QObject):
                 cursor = conn.cursor()
                 cursor.execute("SELECT ACC, NAMA_ACC FROM accinv ORDER BY ACC")
                 records = cursor.fetchall()
+                if not records:
+                    cursor.execute("SELECT DISTINCT ACC FROM barang ORDER BY ACC")
+                    records = [(r[0], f"Account {r[0]}") for r in cursor.fetchall() if r[0]]
             else:
                 source_config = {
                     'host': self.view.source_host_input.text().strip(),
@@ -149,6 +183,9 @@ class AdjustmentPajakController(QObject):
                 cursor = conn.cursor()
                 cursor.execute("SELECT ACC, NAMA_ACC FROM accinv ORDER BY ACC")
                 records = cursor.fetchall()
+                if not records:
+                    cursor.execute("SELECT DISTINCT ACC FROM barang ORDER BY ACC")
+                    records = [(r[0], f"Account {r[0]}") for r in cursor.fetchall() if r[0]]
 
             self.view.combo_acc.clear()
             self.view.combo_acc.addItem("Select Account...", "")

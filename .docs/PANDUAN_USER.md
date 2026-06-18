@@ -73,10 +73,11 @@ python python_test/run_gui.py
 2. **Test Database Connections**:
    - Click the **Test Connection** button.
    - The application will attempt to connect to both databases.
+   - **Auto-Save Settings**: Upon a successful connection test, the application automatically saves your connection settings (host, port, user, password, database) into `connection_settings.json`. These settings will be automatically loaded the next time you open the application.
    - If the Target Database is missing, the application will display a warning: **"Database Target belum ada. Apakah Anda ingin melanjutkan dengan mengkloning saat proses berjalan?"**
-   - Click **Yes** to authorize the system to clone the database structure and initial transactions from the Source DB when the adjustment is started.
+   - Click **Yes** to authorize the system to clone the database structure and initial transactions from the Source DB when the adjustment is started. **Note:** Clicking Yes will also automatically trigger the Auto-Save Settings feature.
 3. **Select Account & Target Parameters**:
-   - After a successful connection test, the account dropdown menu will populate with accounts retrieved from the source `accinv` table. You can select a specific branch or the new "ALL - A1 & A3 (Gabungan)" option.
+   - After a successful connection test, the account dropdown menu will populate with accounts retrieved from the source `accinv` table. If the `accinv` table is empty or missing, the system will fallback to fetching distinct active accounts directly from the `barang` table (ensuring `A1` and `A3` are always available). You can select a specific branch or the "ALL - A1 & A3 (Gabungan)" option.
    - If "ALL" is chosen, the single Target PPN you enter will be proportionally deducted/added across the combined total omset of both A1 and A3.
    - This "ALL" mode activates the **Silang Subsidi (Cross-Pollination)** feature: any leftover deductions (savings) from A1 can be automatically used to cover additions in A3, and vice versa.
    - Define the start and end dates for the adjustment range using the date widgets.

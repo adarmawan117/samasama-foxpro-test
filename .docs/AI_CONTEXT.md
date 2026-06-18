@@ -41,8 +41,8 @@ The codebase is structured according to Clean Architecture principles combined w
 ```
 
 ### 1.1 Separation of Concerns
-- **View (`adjustment_ppn_gui/main_window.py`)**: Built on PyQt5. Defines the UI layouts, buttons, progress bar, text inputs, date pickers, and logger text area. User interactions emit PyQt5 signals (e.g., `proses_clicked = pyqtSignal()`). The view is completely unaware of the databases, SQL translation, or calculation logic.
-- **Controller (`adjustment_ppn_gui/controller.py`)**: Connects the View to the core backend. It handles UI validation, orchestrates popups (such as the target database missing and rerun/rollback confirmations), and manages background workers.
+- **View (`adjustment_ppn_gui/main_window.py`)**: Built on PyQt5. Defines UI layouts, buttons, progress bar, text inputs, date pickers, and logger. It automatically loads connection settings from `connection_settings.json` upon initialization. User interactions emit PyQt5 signals (e.g., `proses_clicked = pyqtSignal()`).
+- **Controller (`adjustment_ppn_gui/controller.py`)**: Connects the View to the core backend. It handles UI validation, orchestrates popups, manages background workers, writes `connection_settings.json` upon successful tests, and implements fallback logic (e.g., reading from `barang` if `accinv` is empty for account dropdowns).
 - **Workers (`adjustment_ppn_gui/workers.py`)**: Long-running or blocking calls—such as connection testing, database cloning, and adjustment calculations—are executed in asynchronous threads (`QThread`) to keep the main GUI thread responsive. Inter-thread communication is achieved via PyQt signals (e.g., `progress_signal`, `finished_signal`, `error_signal`).
 - **Core Business Logic (`adjustment_ppn_core/`)**: Includes the calculation engines, SQL query translation layers, ledger rollback facilities, and database schema migrations. This core is independent of PyQt5 and can be executed via command-line scripts.
 
