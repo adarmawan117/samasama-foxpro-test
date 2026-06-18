@@ -16,8 +16,9 @@ from PyQt5.QtWidgets import QApplication, QMessageBox, QFileDialog, QLineEdit, Q
 from PyQt5.QtTest import QTest
 from PyQt5.QtCore import Qt, QDate, QEventLoop, QTimer
 
-# Import the GUI application class
-from adjustment_ppn_gui import ProsesAdjustmentPajakApp, WorkerThread, TestConnectionWorker
+# Import the GUI application class and controller
+from adjustment_ppn_gui import ProsesAdjustmentPajakApp, AdjustmentPajakController, WorkerThread, TestConnectionWorker
+
 
 def create_mock_db(db_path):
     """Creates a mock database matching schemas expected by the adjustment backend."""
@@ -151,8 +152,10 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         conn.commit()
         conn.close()
 
-        # Instantiate GUI QMainWindow
-        self.window = ProsesAdjustmentPajakApp()
+        # Instantiate GUI QMainWindow and Controller
+        self.window = ProsesAdjustmentPajakApp(create_controller=False)
+        self.controller = AdjustmentPajakController(self.window)
+        self.window.controller = self.controller
         
         # Monkeypatch QMessageBox to prevent blocking execution during test runs
         self.original_info = QMessageBox.information
