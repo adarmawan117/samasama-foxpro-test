@@ -35,5 +35,5 @@ if __name__ == '__main__':
     controller = AdjustmentPajakController(view)
     view.controller = controller
     
-    view.show()
+    view.showMaximized()
     sys.exit(app.exec_())

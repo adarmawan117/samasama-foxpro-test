@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QComboBox, QPushButton, 
                              QMessageBox, QDateEdit, QFormLayout, QProgressBar, 
                              QListWidget, QLineEdit, QFileDialog, QGroupBox, QMenu,
-                             QDesktopWidget)
+                             QDesktopWidget, QScrollArea, QSizePolicy)
 from PyQt5.QtCore import Qt, QDate, pyqtSignal
 from PyQt5.QtGui import QFont, QDoubleValidator
 
@@ -63,11 +63,17 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
-        db_layout = QHBoxLayout()
+        # Main Horizontal Layout
+        main_layout = QHBoxLayout()
+        layout.addLayout(main_layout)
 
-        # Group 1: Source Database
-        source_group = QGroupBox("Source Database (Original)")
-        source_group_layout = QFormLayout(source_group)
+        # Left side layout for controls
+        left_layout = QVBoxLayout()
+
+        # Database Configuration Group
+        db_layout = QVBoxLayout()
+        source_group = QGroupBox("Database Asal (Source)")
+        source_group_layout = QFormLayout()
         
         self.source_host_input = QLineEdit("localhost")
         self.source_host_input.setObjectName("source_host_input")
@@ -87,7 +93,7 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         source_group_layout.addRow("Password:", self.source_pass_input)
         
         source_db_layout = QHBoxLayout()
-        self.source_db_input = QLineEdit("inventory")
+        self.source_db_input = QLineEdit("source_db")
         self.source_db_input.setObjectName("source_db_input")
         self.db_path_input = self.source_db_input # Compatibility alias
         
@@ -99,11 +105,11 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         source_db_layout.addWidget(self.btn_browse_source)
         source_group_layout.addRow("Database Name / Path:", source_db_layout)
         
+        source_group.setLayout(source_group_layout)
         db_layout.addWidget(source_group)
 
-        # Group 2: Target Database
-        target_group = QGroupBox("Target Database (Pajak)")
-        target_group_layout = QFormLayout(target_group)
+        target_group = QGroupBox("Database Target")
+        target_group_layout = QFormLayout()
         
         self.target_host_input = QLineEdit("localhost")
         self.target_host_input.setObjectName("target_host_input")
@@ -133,13 +139,14 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         target_db_layout.addWidget(self.btn_browse_target)
         target_group_layout.addRow("Database Name / Path:", target_db_layout)
         
+        target_group.setLayout(target_group_layout)
         db_layout.addWidget(target_group)
-        layout.addLayout(db_layout)
+        left_layout.addLayout(db_layout)
 
         # Test Connection Button
         self.btn_test_conn = QPushButton("Test Connection")
         self.btn_test_conn.setObjectName("btn_test_conn")
-        layout.addWidget(self.btn_test_conn)
+        left_layout.addWidget(self.btn_test_conn)
 
         # Options Layout
         options_layout = QFormLayout()
@@ -168,42 +175,52 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         options_layout.addRow("End Date:", self.tgl_akhir)
 
         # Target PPN Input
-        self.target_ppn_input = QLineEdit("7500000000")
+        self.target_ppn_input = QLineEdit("6000000000")
         self.target_ppn_input.setObjectName("target_ppn_input")
-        # Allow negative/positive floating values
-        self.target_ppn_input.setValidator(QDoubleValidator(-999999999.0, 999999999.0, 2, self))
+        self.target_ppn_input.setValidator(QDoubleValidator(-999999999.0, 9999999999.0, 2, self))
         self.target_ppn_input.setEnabled(False)
-        options_layout.addRow("Target Penjualan (REAL JUAL):", self.target_ppn_input)
+        options_layout.addRow("Target Penjualan (PPN + Gunggung):", self.target_ppn_input)
 
-        # Current Omset (REAL JUAL) Input
-        self.current_omset_input = QLineEdit("-")
-        self.current_omset_input.setObjectName("current_omset_input")
-        self.current_omset_input.setEnabled(False)
-        options_layout.addRow("Penjualan (REAL JUAL):", self.current_omset_input)
+        # Target BTKP Input
+        self.target_btkp_input = QLineEdit("600000000")
+        self.target_btkp_input.setObjectName("target_btkp_input")
+        self.target_btkp_input.setValidator(QDoubleValidator(-999999999.0, 9999999999.0, 2, self))
+        self.target_btkp_input.setEnabled(False)
+        options_layout.addRow("Target Penjualan (BTKP):", self.target_btkp_input)
 
-        self.current_retur_input = QLineEdit("-")
-        self.current_retur_input.setObjectName("current_retur_input")
-        self.current_retur_input.setEnabled(False)
-        options_layout.addRow("Retur (R JUAL):", self.current_retur_input)
+        # Current Omset (REAL JUAL) Input PPN
+        self.current_ppn_omset_input = QLineEdit("-")
+        self.current_ppn_omset_input.setObjectName("current_ppn_omset_input")
+        self.current_ppn_omset_input.setEnabled(False)
+        options_layout.addRow("Penjualan Asli (PPN + Gunggung):", self.current_ppn_omset_input)
 
-        self.current_net_omset_input = QLineEdit("-")
-        self.current_net_omset_input.setObjectName("current_net_omset_input")
-        self.current_net_omset_input.setEnabled(False)
-        options_layout.addRow("Omset Bersih:", self.current_net_omset_input)
+        # Current Omset (REAL JUAL) Input BTKP
+        self.current_btkp_omset_input = QLineEdit("-")
+        self.current_btkp_omset_input.setObjectName("current_btkp_omset_input")
+        self.current_btkp_omset_input.setEnabled(False)
+        options_layout.addRow("Penjualan Asli (BTKP):", self.current_btkp_omset_input)
 
-        layout.addLayout(options_layout)
+        self.current_ppn_retur_input = QLineEdit("-")
+        self.current_ppn_retur_input.setObjectName("current_ppn_retur_input")
+        self.current_ppn_retur_input.setEnabled(False)
+        options_layout.addRow("Retur (PPN + Gunggung):", self.current_ppn_retur_input)
 
-        # Log status widget
-        self.log_widget = QListWidget()
-        self.log_widget.setObjectName("log_widget")
-        self.log_widget.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.log_widget.customContextMenuRequested.connect(self.show_log_context_menu)
-        layout.addWidget(self.log_widget)
+        self.current_btkp_retur_input = QLineEdit("-")
+        self.current_btkp_retur_input.setObjectName("current_btkp_retur_input")
+        self.current_btkp_retur_input.setEnabled(False)
+        options_layout.addRow("Retur (BTKP):", self.current_btkp_retur_input)
 
-        # Progress bar
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        layout.addWidget(self.progress_bar)
+        self.current_net_ppn_input = QLineEdit("-")
+        self.current_net_ppn_input.setObjectName("current_net_ppn_input")
+        self.current_net_ppn_input.setEnabled(False)
+        options_layout.addRow("Omset Bersih (PPN + Gunggung):", self.current_net_ppn_input)
+
+        self.current_net_btkp_input = QLineEdit("-")
+        self.current_net_btkp_input.setObjectName("current_net_btkp_input")
+        self.current_net_btkp_input.setEnabled(False)
+        options_layout.addRow("Omset Bersih (BTKP):", self.current_net_btkp_input)
+
+        left_layout.addLayout(options_layout)
 
         # Action Buttons Layout
         btn_layout = QHBoxLayout()
@@ -216,7 +233,35 @@ class ProsesAdjustmentPajakApp(QMainWindow):
 
         btn_layout.addWidget(self.btn_proses)
         btn_layout.addWidget(self.btn_export)
-        layout.addLayout(btn_layout)
+        left_layout.addLayout(btn_layout)
+
+        left_widget = QWidget()
+        left_widget.setLayout(left_layout)
+        
+        scroll_area = QScrollArea()
+        scroll_area.setWidget(left_widget)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setMinimumWidth(380)
+        scroll_area.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Expanding)
+        
+        main_layout.addWidget(scroll_area, stretch=0)
+
+        # Right side layout for logs
+        right_layout = QVBoxLayout()
+        
+        # Log status widget
+        self.log_widget = QListWidget()
+        self.log_widget.setObjectName("log_widget")
+        self.log_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.log_widget.customContextMenuRequested.connect(self.show_log_context_menu)
+        right_layout.addWidget(self.log_widget)
+
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        right_layout.addWidget(self.progress_bar)
+
+        main_layout.addLayout(right_layout, stretch=2)
 
         # Connect button clicks to emit custom signals
         self.btn_browse_source.clicked.connect(self.browse_source_clicked.emit)
@@ -250,6 +295,9 @@ class ProsesAdjustmentPajakApp(QMainWindow):
 
     def get_target_ppn(self) -> str:
         return self.target_ppn_input.text()
+
+    def get_target_btkp(self) -> str:
+        return self.target_btkp_input.text()
 
     # Setters/Mutators
     def set_source_db(self, path: str):

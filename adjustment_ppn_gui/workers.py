@@ -109,30 +109,39 @@ class CurrentValueCalculatorWorker(QThread):
             
             # Real Jual (Penjualan)
             djual_query = f"""
-                SELECT SUM((d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH))
+                SELECT 
+                    SUM(CASE WHEN b.PAJAK IN (1, 3) THEN (d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH) ELSE 0 END),
+                    SUM(CASE WHEN b.PAJAK = 2 THEN (d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH) ELSE 0 END)
                 FROM djual d
                 LEFT JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
                 WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if self.sandbox else '%s'} AND d.TGL_JUAL <= {'?' if self.sandbox else '%s'}
             """
             cursor.execute(djual_query, (*acc_tuple, self.start_date, self.end_date))
             row = cursor.fetchone()
-            real_jual = float(row[0]) if row and row[0] is not None else 0.0
+            real_ppn = float(row[0]) if row and row[0] is not None else 0.0
+            real_btkp = float(row[1]) if row and row[1] is not None else 0.0
             
             # R_Jual (Retur Penjualan)
             drjual_query = f"""
-                SELECT SUM((d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH))
+                SELECT 
+                    SUM(CASE WHEN b.PAJAK IN (1, 3) THEN (d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH) ELSE 0 END),
+                    SUM(CASE WHEN b.PAJAK = 2 THEN (d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH) ELSE 0 END)
                 FROM drjual d
                 LEFT JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
                 WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if self.sandbox else '%s'} AND d.TGL_JUAL <= {'?' if self.sandbox else '%s'}
             """
             cursor.execute(drjual_query, (*acc_tuple, self.start_date, self.end_date))
             row = cursor.fetchone()
-            r_jual = float(row[0]) if row and row[0] is not None else 0.0
+            r_ppn = float(row[0]) if row and row[0] is not None else 0.0
+            r_btkp = float(row[1]) if row and row[1] is not None else 0.0
             
             self.result_signal.emit({
-                'real_jual': real_jual,
-                'r_jual': r_jual,
-                'net_omset': real_jual - r_jual
+                'real_ppn': real_ppn,
+                'real_btkp': real_btkp,
+                'r_ppn': r_ppn,
+                'r_btkp': r_btkp,
+                'net_ppn': real_ppn - r_ppn,
+                'net_btkp': real_btkp - r_btkp
             })
         except Exception as e:
             import traceback
@@ -151,7 +160,7 @@ class WorkerThread(QThread):
     db_not_found_signal = pyqtSignal(str, dict)
     rerun_warning_signal = pyqtSignal(str, dict)
 
-    def __init__(self, source_config, target_config, acc, start_date, end_date, target_ppn, force_rerun=False):
+    def __init__(self, source_config, target_config, acc, start_date, end_date, target_ppn, target_btkp, force_rerun=False):
         super().__init__()
         self.source_config = source_config
         self.target_config = target_config
@@ -159,6 +168,7 @@ class WorkerThread(QThread):
         self.start_date = start_date
         self.end_date = end_date
         self.target_ppn = target_ppn
+        self.target_btkp = target_btkp
         self.force_rerun = force_rerun
         self.log_records = []
 
@@ -187,7 +197,8 @@ class WorkerThread(QThread):
                             "acc": self.acc,
                             "start_date": self.start_date,
                             "end_date": self.end_date,
-                            "target_ppn": self.target_ppn
+                            "target_ppn": self.target_ppn,
+                            "target_btkp": self.target_btkp
                         }
                     )
                     return
@@ -204,118 +215,33 @@ class WorkerThread(QThread):
                 self.log_records.append(msg)
                 self.progress_signal.emit(msg)
 
-            target_val = self.target_ppn
+            from adjustment_ppn_core.calculator.adjustment_dual import proses_adjustment_dual
             
-            # Calculate current REAL JUAL
-            cursor_src = source_conn.cursor()
-            acc_tuple = self.acc if isinstance(self.acc, (list, tuple)) else (self.acc,)
-            placeholders = ", ".join(["?"] * len(acc_tuple)) if is_sandbox else ", ".join(["%s"] * len(acc_tuple))
-            
-            djual_query = f"""
-                SELECT SUM((d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH))
-                FROM djual d
-                LEFT JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-                WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if is_sandbox else '%s'} AND d.TGL_JUAL <= {'?' if is_sandbox else '%s'}
-            """
-            cursor_src.execute(djual_query, (*acc_tuple, self.start_date, self.end_date))
-            djual_row = cursor_src.fetchone()
-            try:
-                current_omset = float(djual_row[0]) if djual_row and djual_row[0] is not None else 0.0
-            except Exception:
-                current_omset = 0.0
-
-            try:
-                target_val_float = float(target_val)
-            except Exception:
-                target_val_float = 0.0
-                
-            # Compute gap based on REAL JUAL (without subtracting retur) as requested
-            target_omset_change = target_val_float - current_omset
-
-            local_callback(f"Target Omset (REAL JUAL): {target_val_float:,.2f} | Omset Saat Ini: {current_omset:,.2f}")
-            local_callback(f"Target Perubahan Omset (Gap): {target_omset_change:,.2f}")
-
-            final_gap = 0.0
-
             import os
             max_workers = max(1, int(os.cpu_count() * 0.7))
-            if target_omset_change < -0.001:
-                global_gap = proses_pengurangan_omset(source_conn, target_conn, self.acc, self.start_date, self.end_date, target_omset_change, max_workers=max_workers, log_callback=local_callback)
-                if abs(global_gap) > 0.001:
-                    distribusikan_global_gap(source_conn, target_conn, self.acc, self.start_date, self.end_date, global_gap, max_workers=max_workers, log_callback=local_callback)
-                final_gap = global_gap
-            elif target_omset_change > 0.001:
-                global_gap = proses_penambahan_omset(source_conn, target_conn, self.acc, self.start_date, self.end_date, target_omset_change, max_workers=max_workers, log_callback=local_callback)
-                if abs(global_gap) > 0.001:
-                    distribusikan_global_gap(source_conn, target_conn, self.acc, self.start_date, self.end_date, global_gap, max_workers=max_workers, log_callback=local_callback)
-                final_gap = global_gap
-            else:
-                # Target PPN = 0 balancing (same as main in backend)
-                cursor_src = source_conn.cursor()
-                cursor_tgt = target_conn.cursor()
-                acc_tuple = self.acc if isinstance(self.acc, (list, tuple)) else (self.acc,)
-                placeholders = ", ".join(["?"] * len(acc_tuple)) if is_sandbox else ", ".join(["%s"] * len(acc_tuple))
-                cursor_src.execute(f"""
-                    SELECT TGL_JUAL, F_JUAL, COUNT(*) 
-                    FROM djual 
-                    WHERE ACC IN ({placeholders}) AND TGL_JUAL >= {'?' if is_sandbox else '%s'} AND TGL_JUAL <= {'?' if is_sandbox else '%s'}
-                    GROUP BY TGL_JUAL, F_JUAL
-                """, (*acc_tuple, self.start_date, self.end_date))
-                receipts = cursor_src.fetchall()
-                if len(receipts) >= 2:
-                    cursor_src.execute(f"""
-                        SELECT d.TGL_JUAL, d.F_JUAL, d.KODE_BRG, d.JUMLAH, d.HRG_JUAL, d.URUTAN, d.HRG_BELI, d.ACC
-                        FROM djual d
-                        JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-                        WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if is_sandbox else '%s'} AND d.TGL_JUAL <= {'?' if is_sandbox else '%s'} AND b.PAJAK = 1
-                        ORDER BY d.HRG_JUAL DESC, d.URUTAN DESC
-                    """, (*acc_tuple, self.start_date, self.end_date))
-                    ppn_items = cursor_src.fetchall()
-                    
-                    receipt_counts = {(r[0], r[1]): r[2] for r in receipts}
-                    
-                    reduce_item = None
-                    for item in ppn_items:
-                        tgl, f_jual, kode, qty, price, urutan, hrg_beli, item_acc = item
-                        count = receipt_counts[(tgl, f_jual)]
-                        max_q = qty if count > 1 else qty - 1
-                        if max_q >= 1:
-                            reduce_item = item
-                            break
-                    
-                    if reduce_item:
-                        tgl_red, f_red, kode_red, qty_red, price_red, urutan_red, hrg_beli_red, item_acc = reduce_item
-                        new_qty = qty_red - 1
-                        if new_qty <= 0:
-                            cursor_tgt.execute("DELETE FROM djual WHERE urutan = ?" if is_sandbox else "DELETE FROM djual WHERE urutan = %s", (urutan_red,))
-                        else:
-                            cursor_tgt.execute("UPDATE djual SET jumlah = ? WHERE urutan = ?" if is_sandbox else "UPDATE djual SET jumlah = %s WHERE urutan = %s", (new_qty, urutan_red))
-                        
-                        target_receipt = None
-                        for r in receipts:
-                            tgl_target, f_target, _ = r
-                            if f_target != f_red:
-                                target_receipt = r
-                                break
-                        
-                        if target_receipt:
-                            tgl_add, f_add, _ = target_receipt
-                            cursor_tgt.execute(f"""
-                                SELECT urutan FROM djual 
-                                WHERE ACC = {'?' if is_sandbox else '%s'} AND TGL_JUAL = {'?' if is_sandbox else '%s'} AND F_JUAL = {'?' if is_sandbox else '%s'} AND KODE_BRG = {'?' if is_sandbox else '%s'}
-                            """, (item_acc, tgl_add, f_add, kode_red))
-                            existing = cursor_tgt.fetchone()
-                            if existing:
-                                cursor_tgt.execute("UPDATE djual SET jumlah = jumlah + 1 WHERE urutan = ?" if is_sandbox else "UPDATE djual SET jumlah = jumlah + 1 WHERE urutan = %s", (existing[0],))
-                            else:
-                                cursor_tgt.execute("""
-                                    INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN)
-                                    VALUES (?, ?, ?, ?, 1.0, ?, ?, 0.0, 0.0, 0.0, 0.0, 10.0)
-                                """ if is_sandbox else """
-                                    INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN)
-                                    VALUES (%s, %s, %s, %s, 1.0, %s, %s, 0.0, 0.0, 0.0, 0.0, 10.0)
-                                """, (tgl_add, f_add, item_acc, kode_red, hrg_beli_red, price_red))
-                        local_callback("Action: Balanced Target PPN=0 | Shifted 1 unit of " + kode_red + " from " + f_red + " to " + f_add)
+            
+            try:
+                target_ppn_float = float(self.target_ppn)
+            except Exception:
+                target_ppn_float = 0.0
+                
+            try:
+                target_btkp_float = float(self.target_btkp)
+            except Exception:
+                target_btkp_float = 0.0
+                
+            final_gap = proses_adjustment_dual(
+                source_conn=source_conn,
+                target_conn=target_conn,
+                acc=self.acc,
+                start_date=self.start_date,
+                end_date=self.end_date,
+                target_ppn=target_ppn_float,
+                target_btkp=target_btkp_float,
+                is_sandbox=is_sandbox,
+                max_workers=max_workers,
+                log_callback=local_callback
+            )
 
             target_conn.commit()
             self.finished_signal.emit(True, final_gap, self.log_records)

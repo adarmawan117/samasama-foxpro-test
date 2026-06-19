@@ -45,8 +45,10 @@ class AdjustmentPajakController(QObject):
         start_date = self.view.get_start_date()
         end_date = self.view.get_end_date()
         
-        self.view.current_omset_input.setText("Menghitung...")
+        self.view.current_ppn_omset_input.setText("Menghitung...")
+        self.view.current_btkp_omset_input.setText("Menghitung...")
         self.view.target_ppn_input.setEnabled(False)
+        self.view.target_btkp_input.setEnabled(False)
         self.view.btn_proses.setEnabled(False)
         self.view.log_status("System: Sedang menghitung Omset Saat Ini (REAL JUAL)...")
         
@@ -57,8 +59,10 @@ class AdjustmentPajakController(QObject):
         self.calc_worker.result_signal.connect(self.on_calc_finished)
         
         def on_calc_error(err):
-            self.view.current_omset_input.setText("Error")
+            self.view.current_ppn_omset_input.setText("Error")
+            self.view.current_btkp_omset_input.setText("Error")
             self.view.target_ppn_input.setEnabled(True)
+            self.view.target_btkp_input.setEnabled(True)
             self.view.btn_proses.setEnabled(True)
             self.view.log_status(f"System Error: Gagal menghitung Omset Saat Ini. {err}")
             
@@ -66,10 +70,17 @@ class AdjustmentPajakController(QObject):
         self.calc_worker.start()
 
     def on_calc_finished(self, data):
-        self.view.current_omset_input.setText(f"{data['real_jual']:,.2f}")
-        self.view.current_retur_input.setText(f"{data['r_jual']:,.2f}")
-        self.view.current_net_omset_input.setText(f"{data['net_omset']:,.2f}")
+        self.view.current_ppn_omset_input.setText(f"{data['real_ppn']:,.2f}")
+        self.view.current_btkp_omset_input.setText(f"{data['real_btkp']:,.2f}")
+        
+        self.view.current_ppn_retur_input.setText(f"{data['r_ppn']:,.2f}")
+        self.view.current_btkp_retur_input.setText(f"{data['r_btkp']:,.2f}")
+        
+        self.view.current_net_ppn_input.setText(f"{data['net_ppn']:,.2f}")
+        self.view.current_net_btkp_input.setText(f"{data['net_btkp']:,.2f}")
+        
         self.view.target_ppn_input.setEnabled(True)
+        self.view.target_btkp_input.setEnabled(True)
         self.view.btn_proses.setEnabled(True)
         self.view.log_status("System: Perhitungan Omset Saat Ini selesai.")
 
@@ -285,6 +296,7 @@ class AdjustmentPajakController(QObject):
         start_date = self.view.get_start_date()
         end_date = self.view.get_end_date()
         target_ppn_str = self.view.get_target_ppn().strip()
+        target_btkp_str = self.view.get_target_btkp().strip()
 
         is_sqlite = source_db.lower().endswith(('.db', '.sqlite')) or target_db.lower().endswith(('.db', '.sqlite'))
         if not source_db or (is_sqlite and not os.path.exists(source_db)):
@@ -300,14 +312,15 @@ class AdjustmentPajakController(QObject):
         else:
             acc_tuple = (acc,)
 
-        if not target_ppn_str:
-            self.view.show_critical_message("Error", "Please input target PPN.")
+        if not target_ppn_str or not target_btkp_str:
+            self.view.show_critical_message("Error", "Please input target PPN and BTKP.")
             return
 
         try:
             target_ppn = float(target_ppn_str.replace(',', '.'))
+            target_btkp = float(target_btkp_str.replace(',', '.'))
         except ValueError:
-            self.view.show_critical_message("Error", "Target PPN must be a numeric value.")
+            self.view.show_critical_message("Error", "Targets must be numeric values.")
             return
 
         # Lock Inputs & Start Process
@@ -321,6 +334,10 @@ class AdjustmentPajakController(QObject):
         self.view.set_export_enabled(False)
 
         self.view.log_status("System: Starting background adjustment process...")
+        self.view.log_status(f"System: Memulai proses untuk akun {acc} (Start: {start_date}, End: {end_date})")
+        self.view.log_status(f"System: Target PPN: {target_ppn_str}, Target BTKP: {target_btkp_str}")
+        self.view.progress_bar.setVisible(True)
+        self.view.progress_bar.setRange(0, 0)
 
         source_config = {
             'host': self.view.source_host_input.text().strip(),
@@ -337,7 +354,7 @@ class AdjustmentPajakController(QObject):
             'database': target_db
         }
 
-        self.worker = WorkerThread(source_config, target_config, acc_tuple, start_date, end_date, target_ppn)
+        self.worker = WorkerThread(source_config, target_config, acc_tuple, start_date, end_date, target_ppn_str, target_btkp_str)
         # Expose worker to view for compatibility/closeEvent
         self.view.worker = self.worker
         
@@ -381,6 +398,7 @@ class AdjustmentPajakController(QObject):
             start_date=data["start_date"],
             end_date=data["end_date"],
             target_ppn=data["target_ppn"],
+            target_btkp=data["target_btkp"],
             force_rerun=True
         )
         self.view.worker = self.worker
