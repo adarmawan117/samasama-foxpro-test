@@ -176,10 +176,10 @@ Converts MySQL `CREATE TABLE` DDL statements to SQLite-compatible syntax:
 The system performs transaction adjustments according to four primary logic scenarios to align the target tax database with a specified target PPN value.
 
 ### 5.1 Scenario 1: Target Gap Calculation
-The user inputs a **Target Final PPN**. The system computes the Omset gap needed to reach this tax target:
-1. **Current PPN**: Calculated by summing `(JUMLAH * HRG_JUAL * F_PPN / 100)` for both sales (`djual`) and returns (`drjual`).
-2. **Gap PPN**: `Target Final PPN - Current PPN`.
-3. **Target Omset Change**: `Gap PPN / 0.11` (assuming an 11% multiplier following the legacy calculation pattern).
+The user inputs a **Target Final Omset (REAL JUAL)**. The system computes the Omset gap needed to reach this target:
+1. **Current Omset (REAL JUAL)**: Calculated by summing `(JUMLAH * HRG_JUAL)` for all items in both sales (`djual`) and returns (`drjual`), regardless of their tax status (`PAJAK`).
+2. **Gap Omset**: `Target Final Omset - Current Omset`.
+3. **Target Omset Change**: Simply equates to the `Gap Omset`.
 
 If `Target Omset Change < 0`, the system triggers **Scenario 2 (Tax Reduction)**. If `> 0`, it triggers **Scenario 3 (Tax Addition)**.
 
@@ -226,6 +226,7 @@ MySQL and SQLite drivers must handle high-volume write operations carefully in a
 - Worker threads only perform `SELECT` queries (using shared connections or thread-local contexts) and calculate mathematics.
 - Write operations are pushed onto a thread-safe `queue.Queue`.
 - The `_writer_loop` pops queries and executes them sequentially. This eliminates `database is locked` SQLite errors and prevents MySQL deadlocks/race conditions.
+- **CRITICAL**: The queue must be explicitly closed using `db_queue.stop_and_wait()` at the end of each processing phase. Failing to do so causes the daemon thread to leak into the next phase, which can corrupt the PyMySQL socket stream (resulting in `unpack_from` or `read of closed file` errors) if the main thread attempts to use the same connection concurrently.
 
 ### 6.3 UI Log Batching (`LogBatcher`)
 Emitting thousands of PyQt5 signals per second from worker threads causes severe UI congestion and unresponsiveness. The `LogBatcher` intercepts log strings and groups them into batches (default size 20). Only when a batch is full (or when the process flushes at the end) does the worker emit the concatenated string via `progress_signal`, maintaining a smooth GUI experience.
@@ -245,8 +246,8 @@ The addition process (`proses_penambahan_omset`) has been refactored from a sequ
 
 ### 6.5 Self-Healing & Global Gap Distribution
 After proportional adjustments, minor rounding differences (global gaps) are resolved:
-- **Negative Gap (Remaining Reduction)**: Shuffles invoice records randomly. In each, it reduces quantities of high-price items and records the reduction as savings (`tambah`).
-- **Positive Gap (Remaining Addition)**: Chooses an invoice at random. It first attempts to consume any remaining savings from `tabungan_dan_hutang` (Scenario 2). If a gap still remains, it injects fictional quantities of the best-fitting product and records it as debt (`kurang`) (Scenario 3).
+- **Negative Gap (Remaining Reduction)**: Iterates over selected receipts and reduces quantities of items, recording the reduction as savings (`tambah`).
+- **Positive Gap (Remaining Addition)**: Chooses target receipts (distributed evenly). It first attempts to consume any remaining savings from `tabungan_dan_hutang`. If a gap still remains, it injects fictional quantities. Instead of deterministically selecting the highest-priced exact fit (which results in repetitive injections), the system calculates the math difference for all available products, gathers the best candidates that match perfectly, and performs a random draw (`random.choice(best_candidates)`) to determine which product to inject. This guarantees diverse and natural-looking tail-end invoices.
 
 ### 6.6 Multi-Account Cross-Pollination (Select All)
 The system supports executing multiple accounts in a single tuple (e.g., `acc=('A1', 'A3')`). When processed in this "ALL" batch:

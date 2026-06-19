@@ -91,8 +91,8 @@ Sistem ini bekerja layaknya sebuah tim pencatat keuangan yang menggunakan metode
     - **b. Fallback Akun Asal:** Jika barang tersebut tidak terdaftar di bawah akun `A1` pada master barang, sistem akan menggunakan akun asal dari nota transaksi tersebut (misalnya tetap dicatat sebagai `A3`).
     - **c. Pembersihan Bersih (Rollback):** Saat proses pemulihan (rollback) dijalankan untuk akun target tertentu (seperti `A3`), sistem akan mendeteksi barang-barang yang dialihkan ke akun `A1` tersebut secara otomatis. Sistem akan membersihkan riwayat mutasi celengan dan catatan hutang baik yang tercatat di `A3` maupun yang dialihkan ke `A1` untuk barang-barang terkait, sehingga data kembali bersih sempurna tanpa ada catatan celengan yang tertinggal.
 
-### 15. Logika Perhitungan Target Pajak (PPN)
-15. Sistem mematuhi standar perhitungan dan asumsi dari sistem lama (*legacy*) demi konsistensi data:
-    - **a. Rumus Pajak:** PPN Jual dihitung dari Harga Kotor (`HRG_JUAL`) dikali 11%, bukan menggunakan rumus DPP matematika murni (`Harga / 1.11`).
-    - **b. Selisih (GAP) Pajak:** Angka yang Anda input di aplikasi adalah **Target Akhir PPN**. Sistem akan mencari selisihnya terhadap *PPN Saat Ini*, lalu mengubah selisih tersebut menjadi *Gap Omset* dengan cara membaginya 11%.
-    - **c. Harga Suntikan Fiktif:** Jika sistem harus menyuntikkan barang baru (fiktif) ke dalam struk penjualan, sistem akan selalu mengambil patokan harga dari field **`HARGA11`** (satuan terkecil/pcs) di tabel master barang.
+### 15. Logika Perhitungan Target Penjualan (REAL JUAL)
+15. Sistem mematuhi standar perhitungan terbaru yang langsung berpatokan pada Omset Kotor:
+    - **a. Perhitungan Omset Saat Ini:** Sistem akan menghitung total Omset Saat Ini (REAL JUAL) dengan menjumlahkan `HRG_JUAL * JUMLAH` untuk **seluruh** barang yang ada di struk, terlepas dari apakah barang tersebut terkena pajak (PAJAK = 1) ataupun tidak.
+    - **b. Selisih (GAP) Omset:** Angka yang Anda input di aplikasi kini adalah **Target Penjualan Akhir (REAL JUAL)**. Sistem akan mencari selisihnya langsung terhadap Omset Saat Ini, tanpa menggunakan perhitungan konversi PPN 11%.
+    - **c. Harga Suntikan Fiktif:** Jika sistem harus menyuntikkan barang baru (fiktif) ke dalam struk penjualan, sistem akan selalu mengambil patokan harga dari field **`HARGA11`** (satuan terkecil/pcs) di tabel master barang, dan memilih produk dengan mengacak para kandidat (kombinasi barang dan kuantitas) yang menghasilkan nilai matematis terdekat dengan celah yang harus ditutup, agar hasil injeksi tampak bervariasi dan natural.

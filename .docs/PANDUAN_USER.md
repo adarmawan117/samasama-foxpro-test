@@ -81,7 +81,8 @@ python python_test/run_gui.py
    - If "ALL" is chosen, the single Target PPN you enter will be proportionally deducted/added across the combined total omset of both A1 and A3.
    - This "ALL" mode activates the **Silang Subsidi (Cross-Pollination)** feature: any leftover deductions (savings) from A1 can be automatically used to cover additions in A3, and vice versa.
    - Define the start and end dates for the adjustment range using the date widgets.
-   - Enter the target PPN (tax value) to achieve in the target database.
+   - Enter the **Target Penjualan (REAL JUAL)** (gross sales target) you wish to achieve in the target database.
+
 4. **Jalankan Proses (Execute Adjustment)**:
    - Click the **Proses** button. The application locks input controls and displays an indeterminate progress bar.
    - **Idempotency Check**: If transactions already exist in the target database within the specified date range, the application displays a confirmation prompt: **"Konfirmasi Rerun. Apakah Anda ingin melakukan rollback dan menulis ulang data transaksi pada rentang tanggal tersebut?"**
