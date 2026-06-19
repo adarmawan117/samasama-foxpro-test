@@ -14,6 +14,7 @@ class ProsesAdjustmentPajakApp(QMainWindow):
     test_conn_clicked = pyqtSignal()
     proses_clicked = pyqtSignal()
     export_clicked = pyqtSignal()
+    inputs_changed = pyqtSignal()
 
     def __init__(self, create_controller=True):
         super().__init__()
@@ -174,6 +175,12 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         self.target_ppn_input.setEnabled(False)
         options_layout.addRow("Target PPN Adjustment:", self.target_ppn_input)
 
+        # Current Omset (REAL JUAL) Input
+        self.current_omset_input = QLineEdit("-")
+        self.current_omset_input.setObjectName("current_omset_input")
+        self.current_omset_input.setEnabled(False)
+        options_layout.addRow("Omset Saat Ini (REAL JUAL):", self.current_omset_input)
+
         layout.addLayout(options_layout)
 
         # Log status widget
@@ -207,6 +214,10 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         self.btn_test_conn.clicked.connect(self.test_conn_clicked.emit)
         self.btn_proses.clicked.connect(self.proses_clicked.emit)
         self.btn_export.clicked.connect(self.export_clicked.emit)
+        
+        self.tgl_awal.dateChanged.connect(self.inputs_changed.emit)
+        self.tgl_akhir.dateChanged.connect(self.inputs_changed.emit)
+        self.combo_acc.currentIndexChanged.connect(self.inputs_changed.emit)
 
         # Load connection settings if they exist
         self.load_settings()

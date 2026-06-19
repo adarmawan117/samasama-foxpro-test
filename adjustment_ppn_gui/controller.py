@@ -3,7 +3,7 @@ import os
 import csv
 import sqlite3
 from PyQt5.QtCore import QObject
-from .workers import TestConnectionWorker, WorkerThread, CloneWorkerThread
+from .workers import TestConnectionWorker, WorkerThread, CloneWorkerThread, CurrentValueCalculatorWorker
 from adjustment_ppn_core.database.connection import get_db_connection
 
 class AdjustmentPajakController(QObject):
@@ -16,6 +16,7 @@ class AdjustmentPajakController(QObject):
         self.worker = None
         self.clone_worker = None
         self.conn_worker = None
+        self.calc_worker = None
         
         # Connect to view signals
         self.view.browse_source_clicked.connect(self.browse_source_db)
@@ -23,6 +24,39 @@ class AdjustmentPajakController(QObject):
         self.view.test_conn_clicked.connect(self.click_test_conn)
         self.view.proses_clicked.connect(self.click_proses)
         self.view.export_clicked.connect(self.click_export)
+        self.view.inputs_changed.connect(self.on_inputs_changed)
+
+    def on_inputs_changed(self):
+        if not self.view.tgl_awal.isEnabled():
+            return
+            
+        source_db = self.view.get_source_db().strip()
+        is_sandbox = source_db.lower().endswith(('.db', '.sqlite'))
+        
+        source_config = {
+            'host': self.view.source_host_input.text().strip(),
+            'port': self.view.source_port_input.text().strip(),
+            'user': self.view.source_user_input.text().strip(),
+            'password': self.view.source_pass_input.text().strip(),
+            'database': source_db
+        }
+        
+        acc = self.view.get_selected_account()
+        start_date = self.view.get_start_date()
+        end_date = self.view.get_end_date()
+        
+        self.view.current_omset_input.setText("Menghitung...")
+        
+        if self.calc_worker is not None and self.calc_worker.isRunning():
+            self.calc_worker.terminate()
+            
+        self.calc_worker = CurrentValueCalculatorWorker(source_config, {}, is_sandbox, acc, start_date, end_date)
+        self.calc_worker.result_signal.connect(self.on_calc_finished)
+        self.calc_worker.error_signal.connect(lambda err: self.view.current_omset_input.setText("Error"))
+        self.calc_worker.start()
+
+    def on_calc_finished(self, total_omset):
+        self.view.current_omset_input.setText(f"{total_omset:,.2f}")
 
     def browse_source_db(self):
         file_name = self.view.get_open_file_name(
@@ -139,6 +173,7 @@ class AdjustmentPajakController(QObject):
             self.view.show_info_message("Success", "Connection test succeeded!")
             self.view.log_status("System: Connection test succeeded. Settings saved. Loading accounts...")
             self.load_accounts()
+            self.on_inputs_changed()
         else:
             self.view.combo_acc.setEnabled(False)
             self.view.tgl_awal.setEnabled(False)

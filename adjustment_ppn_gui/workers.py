@@ -82,6 +82,62 @@ class TestConnectionWorker(QThread):
             friendly_msg = self._translate_db_error(e, "Database Target")
             self.finished_signal.emit(False, friendly_msg)
 
+class CurrentValueCalculatorWorker(QThread):
+    result_signal = pyqtSignal(float)
+    error_signal = pyqtSignal(str)
+
+    def __init__(self, source_config, target_config, sandbox, acc, start_date, end_date):
+        super().__init__()
+        self.source_config = source_config
+        self.target_config = target_config
+        self.sandbox = sandbox
+        self.acc = acc
+        self.start_date = start_date
+        self.end_date = end_date
+
+    def run(self):
+        try:
+            from adjustment_ppn_core.database.connection import get_db_connection
+            conn = get_db_connection(sandbox=self.sandbox, **self.source_config)
+            cursor = conn.cursor()
+            
+            acc_tuple = self.acc if isinstance(self.acc, (list, tuple)) else (self.acc,)
+            placeholders = ", ".join(["?"] if self.sandbox else ["%s"] * len(acc_tuple))
+            
+            # Real Jual (Penjualan)
+            djual_query = f"""
+                SELECT SUM((d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH))
+                FROM djual d
+                LEFT JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
+                WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if self.sandbox else '%s'} AND d.TGL_JUAL <= {'?' if self.sandbox else '%s'} AND b.PAJAK = 1
+            """
+            cursor.execute(djual_query, (*acc_tuple, self.start_date, self.end_date))
+            row = cursor.fetchone()
+            real_jual = float(row[0]) if row and row[0] is not None else 0.0
+            
+            # R_Jual (Retur Penjualan)
+            drjual_query = f"""
+                SELECT SUM((d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH))
+                FROM drjual d
+                LEFT JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
+                WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if self.sandbox else '%s'} AND d.TGL_JUAL <= {'?' if self.sandbox else '%s'} AND b.PAJAK = 1
+            """
+            cursor.execute(drjual_query, (*acc_tuple, self.start_date, self.end_date))
+            row = cursor.fetchone()
+            r_jual = float(row[0]) if row and row[0] is not None else 0.0
+            
+            total_omset = real_jual - r_jual
+            self.result_signal.emit(total_omset)
+        except Exception as e:
+            import traceback
+            self.error_signal.emit(f"Gagal menghitung Omset: {str(e)}\n{traceback.format_exc()}")
+        finally:
+            if 'conn' in locals() and hasattr(conn, 'close'):
+                try:
+                    conn.close()
+                except:
+                    pass
+
 class WorkerThread(QThread):
     progress_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(bool, float, list) # success, final_gap, logs
