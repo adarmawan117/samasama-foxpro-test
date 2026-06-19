@@ -187,9 +187,10 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
     P = target_val / total_net_omset
     
     total_actual_reduction = 0.0
+    total_receipts = len(receipt_items)
     
     # Process each receipt
-    for f_jual, items in receipt_items.items():
+    for index, (f_jual, items) in enumerate(receipt_items.items(), start=1):
         r_key = f_jual
         # Calculate receipt's PPN omset
         receipt_ppn_omset = sum(item['jumlah'] * item['hrg_jual'] for item in items)
@@ -223,7 +224,7 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
 
                 if log_callback and callable(log_callback):
                     remaining_gap = target_val - total_actual_reduction
-                    log_callback(f"[{item['item_acc']}] Action: Reduce Quantity | Receipt: {f_jual} | Product: {item['kode_brg']} | Qty Reduced: {qty_to_reduce} | Value: {val_reduced} | Remaining Gap: {remaining_gap}")
+                    log_callback(f"[{item['item_acc']}] Action: Reduce Quantity [{index}/{total_receipts}] | Receipt: {f_jual} | Product: {item['kode_brg']} | Qty Reduced: {qty_to_reduce} | Value: {val_reduced} | Remaining Gap: {remaining_gap}")
                 
                 # Self-healing and savings
                 # Check A1 Priority Rule
@@ -308,8 +309,9 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
         P = target_val / total_omset
         
     total_actual_addition = 0.0
+    total_receipts = len(receipt_keys)
     
-    for tgl_jual, f_jual, item_acc in receipt_keys:
+    for index, (tgl_jual, f_jual, item_acc) in enumerate(receipt_keys, start=1):
         r_key = f_jual
         receipt_target = receipt_totals[r_key] * P
         
@@ -426,7 +428,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
 
                     if log_callback and callable(log_callback):
                         remaining_gap = target_val - total_actual_addition
-                        log_callback(f"[{item_acc}] Action: Draw Savings | Receipt: {f_jual} | Product: {vs['kode_brg']} | Qty Added: {qty_to_draw} | Value: {val_added} | Remaining Gap: {remaining_gap}")
+                        log_callback(f"[{item_acc}] Action: Draw Savings [{index}/{total_receipts}] | Receipt: {f_jual} | Product: {vs['kode_brg']} | Qty Added: {qty_to_draw} | Value: {val_added} | Remaining Gap: {remaining_gap}")
                     continue
                     
             # Fictional injection
@@ -511,7 +513,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
 
                 if log_callback and callable(log_callback):
                     remaining_gap = target_val - total_actual_addition
-                    log_callback(f"[{item_acc}] Action: Fictional Injection | Receipt: {f_jual} | Product: {p_code} | Qty Injected: {best_k} | Value: {val_injected} | Remaining Gap: {remaining_gap}")
+                    log_callback(f"[{item_acc}] Action: Fictional Injection [{index}/{total_receipts}] | Receipt: {f_jual} | Product: {best_product['kode_brg']} | Qty Injected: {best_k} | Value: {val_injected} | Remaining Gap: {remaining_gap}")
             else:
                 break
                 

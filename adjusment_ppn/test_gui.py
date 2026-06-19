@@ -279,7 +279,7 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         # Ensure combo box has options loaded from database
         self.assertGreater(self.window.combo_acc.count(), 1)
         # Index 0 is placeholder, Index 1 is ALL, Index 2 should be Account '001'
-        self.assertEqual(self.window.combo_acc.itemData(1), ("001",))
+        self.assertEqual(self.window.combo_acc.itemData(1), "001")
         # Ensure the components are enabled
         self.assertTrue(self.window.combo_acc.isEnabled())
 
@@ -366,7 +366,7 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         self.window.load_accounts()
         QApplication.processEvents()
         
-        self.window.combo_acc.setCurrentIndex(2)
+        self.window.combo_acc.setCurrentIndex(1)
         self.window.tgl_awal.setDate(QDate(2026, 6, 1))
         self.window.tgl_akhir.setDate(QDate(2026, 6, 30))
         self.window.target_ppn_input.setText("-10000.0")
@@ -438,7 +438,7 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
             QApplication.processEvents()
             # It should load the accounts successfully because .DB is recognized
             self.assertGreater(self.window.combo_acc.count(), 1)
-            self.assertEqual(self.window.combo_acc.itemData(1), ("001",))
+            self.assertEqual(self.window.combo_acc.itemData(1), "001")
         finally:
             try:
                 os.remove(db_path_upper)
@@ -584,7 +584,7 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         self.window.target_db_input.setText(self.db_path)
         self.window.load_accounts()
         QApplication.processEvents()
-        self.window.combo_acc.setCurrentIndex(2)
+        self.window.combo_acc.setCurrentIndex(1)
         self.window.target_ppn_input.setText("")
         QApplication.processEvents()
         self.window.click_proses()

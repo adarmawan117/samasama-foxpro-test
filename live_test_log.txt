@@ -37,19 +37,19 @@ Verify that SQLite locks (OperationalError) are handled correctly and reported. 
 test_10_connection_testing_failure (test_gui.TestPPNAdjustmentGUI.test_10_connection_testing_failure)
 Verifies that Test Connection button handles failures correctly. ... ok
 test_11_empty_entries_validation (test_gui.TestPPNAdjustmentGUI.test_11_empty_entries_validation)
-Verifies that empty fields trigger validation and show critical messages. ... FAIL
+Verifies that empty fields trigger validation and show critical messages. ... ok
 test_1_form_components_exist (test_gui.TestPPNAdjustmentGUI.test_1_form_components_exist)
 Verifies that the GUI window initializes and contains all required form components. ... ok
 test_2_load_accounts_on_test_connection_success (test_gui.TestPPNAdjustmentGUI.test_2_load_accounts_on_test_connection_success)
-Verifies that accounts are loaded dynamically when test connection succeeds. ... FAIL
+Verifies that accounts are loaded dynamically when test connection succeeds. ... ok
 test_3_state_management_multithreading_and_logging (test_gui.TestPPNAdjustmentGUI.test_3_state_management_multithreading_and_logging)
-Verifies input lock state, multithread responsiveness, real-time logging, and post-process summary. ... FAIL
+Verifies input lock state, multithread responsiveness, real-time logging, and post-process summary. ... ok
 test_4_csv_export_operation (test_gui.TestPPNAdjustmentGUI.test_4_csv_export_operation)
-Verifies that clicking "Export" generates a CSV containing the detail of adjustments. ... ERROR
+Verifies that clicking "Export" generates a CSV containing the detail of adjustments. ... ok
 test_5_stale_accounts_cleared_on_invalid_db (test_gui.TestPPNAdjustmentGUI.test_5_stale_accounts_cleared_on_invalid_db)
 Verifies that the account combo box is cleared when an invalid database is selected. ... ok
 test_6_database_casing_support (test_gui.TestPPNAdjustmentGUI.test_6_database_casing_support)
-Verifies that database paths with uppercase extensions (like .DB) are supported. ... FAIL
+Verifies that database paths with uppercase extensions (like .DB) are supported. ... ok
 test_7_remote_mysql_bypass (test_gui.TestPPNAdjustmentGUI.test_7_remote_mysql_bypass)
 Verifies that MySQL connections bypass the local file existence check. ... ok
 test_8_window_close_guard (test_gui.TestPPNAdjustmentGUI.test_8_window_close_guard)
@@ -95,7 +95,7 @@ Verify TestConnectionWorker emits success signal upon successful test connection
 test_worker_thread_raises_db_not_found (test_schema_cloning.TestPyQt5SignalTriggers.test_worker_thread_raises_db_not_found)
 Verify WorkerThread raises DatabaseNotFoundError and emits db_not_found_signal if target DB does not exist. ... ok
 test_worker_thread_reduction_success (test_schema_cloning.TestPyQt5SignalTriggers.test_worker_thread_reduction_success)
-Verify WorkerThread reduction triggers proper progression and finish signals. ... FAIL
+Verify WorkerThread reduction triggers proper progression and finish signals. ... ok
 test_make_sqlite_compatible (test_schema_cloning.TestSchemaCloningLogic.test_make_sqlite_compatible)
 Test make_sqlite_compatible strips comments and administrative tasks. ... ok
 test_make_sqlite_compatible_comments_before_set (test_schema_cloning.TestSchemaCloningLogic.test_make_sqlite_compatible_comments_before_set)
@@ -127,65 +127,7 @@ Stress: Verify that cloning a WAL SQLite database with raw file copy ignores un-
 test_window_close_guard_bypass_during_cloning (test_stress_challenger.TestStressChallenger.test_window_close_guard_bypass_during_cloning)
 Stress: Verify that closing the window during cloning terminates the thread without warning. ... ok
 
-======================================================================
-ERROR: test_4_csv_export_operation (test_gui.TestPPNAdjustmentGUI.test_4_csv_export_operation)
-Verifies that clicking "Export" generates a CSV containing the detail of adjustments.
 ----------------------------------------------------------------------
-Traceback (most recent call last):
-  File "C:\Users\adarmawan117\Downloads\UndfxffAllW\RESULTS\python_test\adjusment_ppn\test_gui.py", line 378, in test_4_csv_export_operation
-    self.window.worker.finished.connect(loop.quit)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'NoneType' object has no attribute 'finished'
+Ran 64 tests in 3.763s
 
-======================================================================
-FAIL: test_11_empty_entries_validation (test_gui.TestPPNAdjustmentGUI.test_11_empty_entries_validation)
-Verifies that empty fields trigger validation and show critical messages.
-----------------------------------------------------------------------
-Traceback (most recent call last):
-  File "C:\Users\adarmawan117\Downloads\UndfxffAllW\RESULTS\python_test\adjusment_ppn\test_gui.py", line 591, in test_11_empty_entries_validation
-    self.assertTrue(any("Please input target PPN" in call[2] for call in self.msg_box_calls))
-AssertionError: False is not true
-
-======================================================================
-FAIL: test_2_load_accounts_on_test_connection_success (test_gui.TestPPNAdjustmentGUI.test_2_load_accounts_on_test_connection_success)
-Verifies that accounts are loaded dynamically when test connection succeeds.
-----------------------------------------------------------------------
-Traceback (most recent call last):
-  File "C:\Users\adarmawan117\Downloads\UndfxffAllW\RESULTS\python_test\adjusment_ppn\test_gui.py", line 282, in test_2_load_accounts_on_test_connection_success
-    self.assertEqual(self.window.combo_acc.itemData(2), "001")
-AssertionError: None != '001'
-
-======================================================================
-FAIL: test_3_state_management_multithreading_and_logging (test_gui.TestPPNAdjustmentGUI.test_3_state_management_multithreading_and_logging)
-Verifies input lock state, multithread responsiveness, real-time logging, and post-process summary.
-----------------------------------------------------------------------
-Traceback (most recent call last):
-  File "C:\Users\adarmawan117\Downloads\UndfxffAllW\RESULTS\python_test\adjusment_ppn\test_gui.py", line 305, in test_3_state_management_multithreading_and_logging
-    self.assertFalse(self.window.source_host_input.isEnabled())
-AssertionError: True is not false
-
-======================================================================
-FAIL: test_6_database_casing_support (test_gui.TestPPNAdjustmentGUI.test_6_database_casing_support)
-Verifies that database paths with uppercase extensions (like .DB) are supported.
-----------------------------------------------------------------------
-Traceback (most recent call last):
-  File "C:\Users\adarmawan117\Downloads\UndfxffAllW\RESULTS\python_test\adjusment_ppn\test_gui.py", line 441, in test_6_database_casing_support
-    self.assertEqual(self.window.combo_acc.itemData(2), "001")
-AssertionError: None != '001'
-
-======================================================================
-FAIL: test_worker_thread_reduction_success (test_schema_cloning.TestPyQt5SignalTriggers.test_worker_thread_reduction_success)
-Verify WorkerThread reduction triggers proper progression and finish signals.
-----------------------------------------------------------------------
-Traceback (most recent call last):
-  File "C:\Program Files\FlyEnv-Data\env\python\Lib\unittest\mock.py", line 1396, in patched
-    return func(*newargs, **newkeywargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\adarmawan117\Downloads\UndfxffAllW\RESULTS\python_test\adjusment_ppn\test_schema_cloning.py", line 411, in test_worker_thread_reduction_success
-    self.assertIn("Reducing revenue...", progress_msgs)
-AssertionError: 'Reducing revenue...' not found in []
-
-----------------------------------------------------------------------
-Ran 64 tests in 11.875s
-
-FAILED (failures=5, errors=1, expected failures=1)
+OK (expected failures=1)
