@@ -125,22 +125,22 @@ def clone_full_database(source_config, target_config, is_sandbox, log_callback=N
         )
         
         try:
-            cursor_src = conn_src.cursor()
+            cursor_src_meta = conn_src.cursor()
             cursor_tgt = conn_tgt.cursor()
             
             # Disable foreign key checks on target
             cursor_tgt.execute("SET FOREIGN_KEY_CHECKS = 0")
             
-            cursor_src.execute("SHOW TABLES")
-            tables = [row[0] for row in cursor_src.fetchall()]
+            cursor_src_meta.execute("SHOW TABLES")
+            tables = [row[0] for row in cursor_src_meta.fetchall()]
             
             for table in tables:
                 if log_callback:
                     log_callback(f"Cloning table schema and data for: {table}...")
                 
                 # Retrieve source table DDL
-                cursor_src.execute(f"SHOW CREATE TABLE `{table}`")
-                ddl_row = cursor_src.fetchone()
+                cursor_src_meta.execute(f"SHOW CREATE TABLE `{table}`")
+                ddl_row = cursor_src_meta.fetchone()
                 ddl = ddl_row[1]
                 
                 # Drop table if exists on target
@@ -150,8 +150,14 @@ def clone_full_database(source_config, target_config, is_sandbox, log_callback=N
                 cursor_tgt.execute(ddl)
                 
                 # Select data from source and process in batches
-                cursor_src.execute(f"SELECT * FROM `{table}`")
-                rows = cursor_src.fetchmany(1000)
+                try:
+                    import pymysql
+                    cursor_src_data = conn_src.cursor(pymysql.cursors.SSCursor)
+                except Exception:
+                    cursor_src_data = conn_src.cursor()
+                
+                cursor_src_data.execute(f"SELECT * FROM `{table}`")
+                rows = cursor_src_data.fetchmany(10000)
                 if rows:
                     num_cols = len(rows[0])
                     placeholders = ", ".join(["%s"] * num_cols)
@@ -161,10 +167,11 @@ def clone_full_database(source_config, target_config, is_sandbox, log_callback=N
                     while rows:
                         cursor_tgt.executemany(insert_query, rows)
                         total_rows += len(rows)
-                        rows = cursor_src.fetchmany(1000)
+                        rows = cursor_src_data.fetchmany(10000)
                         
                     if log_callback:
                         log_callback(f"Synchronized {total_rows} rows for table {table}")
+                cursor_src_data.close()
                         
             # Enable foreign key checks
             cursor_tgt.execute("SET FOREIGN_KEY_CHECKS = 1")
