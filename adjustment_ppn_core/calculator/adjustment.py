@@ -699,6 +699,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                 if log_callback:
                     log_callback(error_msg)
                 raise Exception("Exception in worker_task")
+    db_queue.stop_and_wait()
     log_batcher.flush()
     
     global_gap = float(target_omset_change) - total_actual_addition
