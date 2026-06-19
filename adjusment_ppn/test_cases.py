@@ -2,13 +2,13 @@
 # This module defines the 52 test cases for the PPN and Tabungan/Hutang Adjustment logic.
 
 DEFAULT_BARANG = [
-    {"ACC": "001", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju", "PAJAK": 1, "HRG_JUAL": 10000.0, "HRG_BELI": 8000.0},
-    {"ACC": "001", "KODE_BRG": "BRG002", "NAMA_BRG": "Sabun", "PAJAK": 1, "HRG_JUAL": 1000.0, "HRG_BELI": 800.0},
-    {"ACC": "001", "KODE_BRG": "BRG003", "NAMA_BRG": "Celana", "PAJAK": 1, "HRG_JUAL": 50000.0, "HRG_BELI": 40000.0},
-    {"ACC": "001", "KODE_BRG": "BRG004", "NAMA_BRG": "Daster", "PAJAK": 1, "HRG_JUAL": 20000.0, "HRG_BELI": 16000.0},
-    {"ACC": "001", "KODE_BRG": "BRG005", "NAMA_BRG": "Sepatu", "PAJAK": 1, "HRG_JUAL": 60000.0, "HRG_BELI": 48000.0},
-    {"ACC": "001", "KODE_BRG": "BRG006", "NAMA_BRG": "Buku", "PAJAK": 2, "HRG_JUAL": 15000.0, "HRG_BELI": 12000.0},
-    {"ACC": "001", "KODE_BRG": "BRG007", "NAMA_BRG": "Pensil", "PAJAK": 0, "HRG_JUAL": 2000.0, "HRG_BELI": 1600.0}
+    {"ACC": "001", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju", "PAJAK": 1, "HARGA11": 10000.0, "HRG_BELI": 8000.0},
+    {"ACC": "001", "KODE_BRG": "BRG002", "NAMA_BRG": "Sabun", "PAJAK": 1, "HARGA11": 1000.0, "HRG_BELI": 800.0},
+    {"ACC": "001", "KODE_BRG": "BRG003", "NAMA_BRG": "Celana", "PAJAK": 1, "HARGA11": 50000.0, "HRG_BELI": 40000.0},
+    {"ACC": "001", "KODE_BRG": "BRG004", "NAMA_BRG": "Daster", "PAJAK": 1, "HARGA11": 20000.0, "HRG_BELI": 16000.0},
+    {"ACC": "001", "KODE_BRG": "BRG005", "NAMA_BRG": "Sepatu", "PAJAK": 1, "HARGA11": 60000.0, "HRG_BELI": 48000.0},
+    {"ACC": "001", "KODE_BRG": "BRG006", "NAMA_BRG": "Buku", "PAJAK": 2, "HARGA11": 15000.0, "HRG_BELI": 12000.0},
+    {"ACC": "001", "KODE_BRG": "BRG007", "NAMA_BRG": "Pensil", "PAJAK": 0, "HARGA11": 2000.0, "HRG_BELI": 1600.0}
 ]
 
 TEST_CASES = []
@@ -447,7 +447,7 @@ TEST_CASES.append({
         ],
         "barang": [
             # Baju is now Rp12000 in Master
-            {"ACC": "001", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju", "PAJAK": 1, "HRG_JUAL": 12000.0, "HRG_BELI": 9000.0}
+            {"ACC": "001", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju", "PAJAK": 1, "HARGA11": 12000.0, "HRG_BELI": 9000.0}
         ]
     },
     "expected": {
@@ -927,7 +927,7 @@ TEST_CASES.append({
             {"acc": "001", "kode_brg": "BRG_LUXURY", "qty": 1.0, "tipe": "tambah"}
         ],
         "barang": [
-            {"ACC": "001", "KODE_BRG": "BRG_LUXURY", "NAMA_BRG": "Luxury Item", "PAJAK": 1, "HRG_JUAL": 1000000000.0, "HRG_BELI": 800000000.0}
+            {"ACC": "001", "KODE_BRG": "BRG_LUXURY", "NAMA_BRG": "Luxury Item", "PAJAK": 1, "HARGA11": 1000000000.0, "HRG_BELI": 800000000.0}
         ]
     },
     "expected": {
@@ -961,7 +961,7 @@ TEST_CASES.append({
             {"acc": "001", "kode_brg": "BRG_CHEAP", "qty": 10000.0, "tipe": "tambah"}
         ],
         "barang": [
-            {"ACC": "001", "KODE_BRG": "BRG_CHEAP", "NAMA_BRG": "Cheap Candy", "PAJAK": 1, "HRG_JUAL": 1.0, "HRG_BELI": 0.8}
+            {"ACC": "001", "KODE_BRG": "BRG_CHEAP", "NAMA_BRG": "Cheap Candy", "PAJAK": 1, "HARGA11": 1.0, "HRG_BELI": 0.8}
         ]
     },
     "expected": {

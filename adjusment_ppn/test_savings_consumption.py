@@ -551,10 +551,10 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         # 1. Populate master barang records
         custom_barang = [
             # Product existing in both A1 and A3
-            {"ACC": "A1", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju A1", "PAJAK": 1, "HRG_JUAL": 10000.0, "HRG_BELI": 8000.0},
-            {"ACC": "A3", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju A3", "PAJAK": 1, "HRG_JUAL": 10000.0, "HRG_BELI": 8000.0},
+            {"ACC": "A1", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju A1", "PAJAK": 1, "HARGA11": 10000.0, "HRG_BELI": 8000.0},
+            {"ACC": "A3", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju A3", "PAJAK": 1, "HARGA11": 10000.0, "HRG_BELI": 8000.0},
             # Product existing only in A3
-            {"ACC": "A3", "KODE_BRG": "BRG002", "NAMA_BRG": "Sabun A3", "PAJAK": 1, "HRG_JUAL": 10000.0, "HRG_BELI": 8000.0}
+            {"ACC": "A3", "KODE_BRG": "BRG002", "NAMA_BRG": "Sabun A3", "PAJAK": 1, "HARGA11": 10000.0, "HRG_BELI": 8000.0}
         ]
         insert_data(src_conn, 'barang', custom_barang)
         insert_data(tgt_conn, 'barang', custom_barang)
