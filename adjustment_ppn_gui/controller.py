@@ -189,8 +189,23 @@ class AdjustmentPajakController(QObject):
 
             self.view.combo_acc.clear()
             self.view.combo_acc.addItem("Select Account...", "")
-            self.view.combo_acc.addItem("ALL - A1 & A3 (Gabungan)", "ALL")
+            
+            # Clean records to remove trailing spaces from FoxPro/MySQL CHAR fields
+            clean_records = []
             for rec in records:
+                acc_code = str(rec[0]).strip() if rec[0] else ""
+                acc_name = str(rec[1]).strip() if rec[1] else f"Account {acc_code}"
+                if acc_code:
+                    clean_records.append((acc_code, acc_name))
+            
+            # Check if A1 and A3 both exist
+            has_a1 = any(r[0] == 'A1' for r in clean_records)
+            has_a3 = any(r[0] == 'A3' for r in clean_records)
+            
+            if has_a1 and has_a3:
+                self.view.combo_acc.addItem("ALL - A1 & A3 (Gabungan)", "ALL")
+                
+            for rec in clean_records:
                 self.view.combo_acc.addItem(f"{rec[0]} - {rec[1]}", rec[0])
         except Exception as e:
             self.view.combo_acc.clear()

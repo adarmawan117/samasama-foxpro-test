@@ -89,13 +89,19 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
     source_cursor = source_conn.cursor()
     target_cursor = target_conn.cursor()
     
-    source_cursor.execute(f"""
-        SELECT COUNT(*) 
-        FROM drjual d
-        JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-        WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
-    """, (*acc_tuple, start_date, end_date))
-    has_returns = source_cursor.fetchone()[0] > 0
+    try:
+        source_cursor.execute(f"""
+            SELECT COUNT(*) 
+            FROM drjual d
+            JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
+            WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
+        """, (*acc_tuple, start_date, end_date))
+        has_returns = source_cursor.fetchone()[0] > 0
+    except Exception as e:
+        if "1146" in str(e) or "no such table" in str(e).lower() or "doesn't exist" in str(e).lower():
+            has_returns = False
+        else:
+            raise
     
     if has_returns:
         # target = net sales
@@ -107,13 +113,19 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
         """, (*acc_tuple, start_date, end_date))
         djual_sum = source_cursor.fetchone()[0] or 0.0
         
-        source_cursor.execute(f"""
-            SELECT SUM(d.JUMLAH * d.HRG_JUAL) 
-            FROM drjual d
-            JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-            WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
-        """, (*acc_tuple, start_date, end_date))
-        drjual_sum = source_cursor.fetchone()[0] or 0.0
+        try:
+            source_cursor.execute(f"""
+                SELECT SUM(d.JUMLAH * d.HRG_JUAL) 
+                FROM drjual d
+                JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
+                WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
+            """, (*acc_tuple, start_date, end_date))
+            drjual_sum = source_cursor.fetchone()[0] or 0.0
+        except Exception as e:
+            if "1146" in str(e) or "no such table" in str(e).lower() or "doesn't exist" in str(e).lower():
+                drjual_sum = 0.0
+            else:
+                raise
         
         net_sales = djual_sum - drjual_sum
         target_omset_change = -net_sales

@@ -11,6 +11,6 @@
         "port": "3306",
         "user": "root",
         "password": "root",
-        "database": "targettt_db"
+        "database": "target_db"
     }
 }
