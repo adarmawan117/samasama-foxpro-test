@@ -275,8 +275,8 @@ class WorkerThread(QThread):
         except DatabaseNotFoundError as e:
             self.db_not_found_signal.emit(str(e), self.target_config)
         except Exception as e:
-            traceback.print_exc()
-            self.error_signal.emit(str(e))
+            import traceback
+            self.error_signal.emit(f"{str(e)}\n{traceback.format_exc()}")
         finally:
             if source_conn and hasattr(source_conn, 'close'):
                 try:

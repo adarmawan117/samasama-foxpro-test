@@ -79,13 +79,88 @@ class SQLiteConnectionWrapper:
         return getattr(self._conn, name)
 
 
+class MySQLCursorWrapper:
+    def __init__(self, cursor, wrapper):
+        self._cursor = cursor
+        self._wrapper = wrapper
+        
+    def execute(self, query, params=None):
+        try:
+            if params is not None:
+                return self._cursor.execute(query, params)
+            else:
+                return self._cursor.execute(query)
+        except Exception as e:
+            if "closed" in str(e).lower() or "gone away" in str(e).lower() or "lost connection" in str(e).lower():
+                self._wrapper.reconnect()
+                self._cursor = self._wrapper._conn.cursor()
+                if params is not None:
+                    return self._cursor.execute(query, params)
+                else:
+                    return self._cursor.execute(query)
+            raise e
+            
+    def executemany(self, query, seq_of_params):
+        try:
+            return self._cursor.executemany(query, seq_of_params)
+        except Exception as e:
+            if "closed" in str(e).lower() or "gone away" in str(e).lower() or "lost connection" in str(e).lower():
+                self._wrapper.reconnect()
+                self._cursor = self._wrapper._conn.cursor()
+                return self._cursor.executemany(query, seq_of_params)
+            raise e
+            
+    def fetchall(self):
+        return self._cursor.fetchall()
+        
+    def fetchone(self):
+        return self._cursor.fetchone()
+        
+    def close(self):
+        return self._cursor.close()
+        
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+        
+    def __iter__(self):
+        return iter(self._cursor)
+
 class MySQLConnectionWrapper:
-    def __init__(self, conn):
+    def __init__(self, conn, connect_kwargs=None, connect_func=None):
         self._conn = conn
+        self.connect_kwargs = connect_kwargs
+        self.connect_func = connect_func
+        
+    def reconnect(self):
+        try:
+            self._conn.close()
+        except:
+            pass
+        if self.connect_func and self.connect_kwargs:
+            self._conn = self.connect_func(**self.connect_kwargs)
+        else:
+            if hasattr(self._conn, 'ping'):
+                self._conn.ping(reconnect=True)
         
     def cursor(self, *args, **kwargs):
-        return self._conn.cursor(*args, **kwargs)
+        try:
+            if hasattr(self._conn, 'ping'):
+                self._conn.ping(reconnect=True)
+        except:
+            pass
+        cursor = self._conn.cursor(*args, **kwargs)
+        return MySQLCursorWrapper(cursor, self)
         
+    def commit(self):
+        try:
+            self._conn.commit()
+        except Exception as e:
+            if "closed" in str(e).lower() or "gone away" in str(e).lower():
+                self.reconnect()
+                self._conn.commit()
+            else:
+                raise e
+                
     def __enter__(self):
         return self
         
@@ -164,24 +239,26 @@ def get_db_connection(sandbox=None, host=None, port=3306, user=None, password=No
         # Try importing pymysql first, fallback to mysql.connector
         try:
             import pymysql
-            conn = pymysql.connect(
-                host=mysql_host,
-                user=mysql_user,
-                password=mysql_password,
-                database=mysql_database,
-                port=mysql_port
-            )
-            return MySQLConnectionWrapper(conn)
+            connect_kwargs = {
+                'host': mysql_host,
+                'user': mysql_user,
+                'password': mysql_password,
+                'database': mysql_database,
+                'port': mysql_port
+            }
+            conn = pymysql.connect(**connect_kwargs)
+            return MySQLConnectionWrapper(conn, connect_kwargs=connect_kwargs, connect_func=pymysql.connect)
         except ImportError:
             import mysql.connector
-            conn = mysql.connector.connect(
-                host=mysql_host,
-                user=mysql_user,
-                password=mysql_password,
-                database=mysql_database,
-                port=mysql_port
-            )
-            return MySQLConnectionWrapper(conn)
+            connect_kwargs = {
+                'host': mysql_host,
+                'user': mysql_user,
+                'password': mysql_password,
+                'database': mysql_database,
+                'port': mysql_port
+            }
+            conn = mysql.connector.connect(**connect_kwargs)
+            return MySQLConnectionWrapper(conn, connect_kwargs=connect_kwargs, connect_func=mysql.connector.connect)
 
 
 def test_dual_connection(source_config, target_config, sandbox=False):
