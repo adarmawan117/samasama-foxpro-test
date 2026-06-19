@@ -971,8 +971,7 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                                
                         if ppn_products:
                             ppn_products.sort(key=lambda x: (x[1], x[0]))
-                            best_p = None
-                            best_k = 0
+                            best_candidates = []
                             min_diff = float('inf')
                             for p in ppn_products:
                                 p_code, p_price, p_beli = p
@@ -984,14 +983,13 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                                 diff = abs(p_price * k - receipt_chunk)
                                 if diff < min_diff - 0.001:
                                     min_diff = diff
-                                    best_p = p
-                                    best_k = k
+                                    best_candidates = [(p, k)]
                                 elif abs(diff - min_diff) < 0.001:
-                                    if best_p is None or p_price > best_p[1]:
-                                        min_diff = diff
-                                        best_p = p
-                                        best_k = k
-                            if best_p:
+                                    best_candidates.append((p, k))
+                                    
+                            if best_candidates:
+                                import random
+                                best_p, best_k = random.choice(best_candidates)
                                 p_code, p_price, p_beli = best_p
                                 
                                 db_queue.push(
