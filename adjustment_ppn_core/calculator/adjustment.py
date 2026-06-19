@@ -236,7 +236,7 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
     target_cursor.execute(f"""
         SELECT urutan, qty, acc, kode_brg, tipe 
         FROM tabungan_dan_hutang 
-        WHERE acc IN ({placeholders_preload}) AND qty > 0.0
+        WHERE acc IN ({placeholders_preload})
     """, (*acc_tuple, 'A1'))
     
     savings_cache = {}
@@ -432,7 +432,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
     target_cursor.execute(f"""
         SELECT urutan, qty, acc, kode_brg, tipe 
         FROM tabungan_dan_hutang 
-        WHERE acc IN ({placeholders_preload}) AND qty > 0.0
+        WHERE acc IN ({placeholders_preload})
     """, (*acc_tuple, 'A1'))
     
     savings_cache = {}
