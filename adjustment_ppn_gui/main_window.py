@@ -168,7 +168,7 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         options_layout.addRow("End Date:", self.tgl_akhir)
 
         # Target PPN Input
-        self.target_ppn_input = QLineEdit("900000000")
+        self.target_ppn_input = QLineEdit("7500000000")
         self.target_ppn_input.setObjectName("target_ppn_input")
         # Allow negative/positive floating values
         self.target_ppn_input.setValidator(QDoubleValidator(-999999999.0, 999999999.0, 2, self))
