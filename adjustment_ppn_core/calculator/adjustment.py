@@ -83,7 +83,7 @@ def settle_debt_with_savings(cursor, acc_tuple, item_acc, kode_brg, best_k, tang
         upsert_tabungan_dan_hutang(cursor, effective_item_acc, kode_brg, best_k, 'kurang', tanggal_dibuat=tanggal_dibuat)
 
 def upsert_tabungan_dan_hutang_async(db_queue, savings_cache, savings_lock, acc, kode_brg, qty, tipe, tanggal_dibuat=None):
-    key = (acc, kode_brg, tipe)
+    key = (acc.strip() if acc else acc, kode_brg.strip() if kode_brg else kode_brg, tipe.strip() if tipe else tipe)
     with savings_lock:
         records = savings_cache.get(key, [])
         if records:
@@ -120,7 +120,7 @@ def settle_debt_with_savings_async(db_queue, savings_cache, savings_lock, a1_pro
     with savings_lock:
         tambah_records = []
         for acc in effective_acc_tuple:
-            key = (acc, kode_brg, 'tambah')
+            key = (acc.strip() if acc else acc, kode_brg.strip() if kode_brg else kode_brg, 'tambah')
             tambah_records.extend(savings_cache.get(key, []))
             
         tambah_record = next((r for r in tambah_records if r['qty'] > 0), None) if tambah_records else None
@@ -241,7 +241,7 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
     savings_cache = {}
     for row in target_cursor.fetchall():
         urutan, qty, row_acc, kode_brg, tipe = row
-        key = (row_acc, kode_brg, tipe)
+        key = (row_acc.strip() if row_acc else row_acc, kode_brg.strip() if kode_brg else kode_brg, tipe.strip() if tipe else tipe)
         if key not in savings_cache:
             savings_cache[key] = []
         savings_cache[key].append({'urutan': urutan, 'qty': float(qty)})
@@ -303,7 +303,7 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
                 debt_records = []
                 with savings_lock:
                     for acc in effective_acc_tuple:
-                        key = (acc, item['kode_brg'], 'kurang')
+                        key = (acc.strip() if acc else acc, item['kode_brg'].strip() if item['kode_brg'] else item['kode_brg'], 'kurang')
                         debt_records.extend(savings_cache.get(key, []))
 
                 debt_record = next((r for r in debt_records if r['qty'] > 0), None)
@@ -362,7 +362,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
     a1_products = set()
     for row in source_cursor.fetchall():
         b_acc, b_kode, b_harga, b_beli, b_pajak = row
-        barang_cache[(b_acc, b_kode)] = {
+        barang_cache[(b_acc.strip() if b_acc else b_acc, b_kode.strip() if b_kode else b_kode)] = {
             'harga11': float(b_harga) if b_harga is not None else 0.0,
             'hrg_beli': float(b_beli) if b_beli is not None else 0.0,
             'pajak': int(b_pajak) if b_pajak is not None else 0
@@ -439,7 +439,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
     savings_cache = {}
     for row in target_cursor.fetchall():
         urutan, qty, row_acc, kode_brg, tipe = row
-        key = (row_acc, kode_brg, tipe)
+        key = (row_acc.strip() if row_acc else row_acc, kode_brg.strip() if kode_brg else kode_brg, tipe.strip() if tipe else tipe)
         if key not in savings_cache:
             savings_cache[key] = []
         savings_cache[key].append({'urutan': urutan, 'qty': float(qty)})
@@ -733,7 +733,7 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
     savings_cache = {}
     for row in target_cursor.fetchall():
         urutan, qty, row_acc, kode_brg, tipe = row
-        key = (row_acc, kode_brg, tipe)
+        key = (row_acc.strip() if row_acc else row_acc, kode_brg.strip() if kode_brg else kode_brg, tipe.strip() if tipe else tipe)
         if key not in savings_cache:
             savings_cache[key] = []
         savings_cache[key].append({'urutan': urutan, 'qty': float(qty)})
@@ -815,7 +815,7 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                     debt_records = []
                     with savings_lock:
                         for a in effective_acc_tuple:
-                            k = (a, kode, 'kurang')
+                            k = (a.strip() if a else a, kode.strip() if kode else kode, 'kurang')
                             debt_records.extend(savings_cache.get(k, []))
                             
                     debt_record = next((r for r in debt_records if r['qty'] > 0), None)
@@ -859,7 +859,7 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
             barang_cache = {}
             for row in source_cursor.fetchall():
                 b_acc, b_kode, b_harga, b_beli, b_pajak = row
-                barang_cache[(b_acc, b_kode)] = {
+                barang_cache[(b_acc.strip() if b_acc else b_acc, b_kode.strip() if b_kode else b_kode)] = {
                     'harga11': float(b_harga) if b_harga is not None else 0.0,
                     'hrg_beli': float(b_beli) if b_beli is not None else 0.0,
                     'pajak': int(b_pajak) if b_pajak is not None else 0
