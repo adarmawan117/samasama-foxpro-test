@@ -88,7 +88,20 @@ def sync_raw_transactions_in_range(source_conn, target_conn, acc, start_date, en
                 col_count = len(rows[0])
                 placeholders_vals = ", ".join(["%s"] * col_count)
                 insert_query = f"INSERT INTO {table} VALUES ({placeholders_vals})"
-                target_cursor.executemany(insert_query, rows)
+                try:
+                    target_cursor.executemany(insert_query, rows)
+                except Exception as e_tgt:
+                    if "1146" in str(e_tgt) or "no such table" in str(e_tgt).lower() or "doesn't exist" in str(e_tgt).lower():
+                        try:
+                            source_cursor.execute(f"SHOW CREATE TABLE `{table}`")
+                            ddl = source_cursor.fetchone()[1]
+                        except Exception:
+                            source_cursor.execute(f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table}'")
+                            ddl = source_cursor.fetchone()[0]
+                        target_cursor.execute(ddl)
+                        target_cursor.executemany(insert_query, rows)
+                    else:
+                        raise
         except Exception as e:
             if "1146" in str(e) or "no such table" in str(e).lower() or "doesn't exist" in str(e).lower():
                 continue
@@ -110,7 +123,20 @@ def sync_raw_transactions_in_range(source_conn, target_conn, acc, start_date, en
                 col_count = len(rows[0])
                 placeholders_vals = ", ".join(["%s"] * col_count)
                 insert_query = f"INSERT INTO {table} VALUES ({placeholders_vals})"
-                target_cursor.executemany(insert_query, rows)
+                try:
+                    target_cursor.executemany(insert_query, rows)
+                except Exception as e_tgt:
+                    if "1146" in str(e_tgt) or "no such table" in str(e_tgt).lower() or "doesn't exist" in str(e_tgt).lower():
+                        try:
+                            source_cursor.execute(f"SHOW CREATE TABLE `{table}`")
+                            ddl = source_cursor.fetchone()[1]
+                        except Exception:
+                            source_cursor.execute(f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table}'")
+                            ddl = source_cursor.fetchone()[0]
+                        target_cursor.execute(ddl)
+                        target_cursor.executemany(insert_query, rows)
+                    else:
+                        raise
         except Exception as e:
             if "1146" in str(e) or "no such table" in str(e).lower() or "doesn't exist" in str(e).lower():
                 continue

@@ -207,6 +207,12 @@ class AdjustmentPajakController(QObject):
                 
             for rec in clean_records:
                 self.view.combo_acc.addItem(f"{rec[0]} - {rec[1]}", rec[0])
+                
+            # Default to A1 for testing phase
+            idx = self.view.combo_acc.findData("A1")
+            if idx >= 0:
+                self.view.combo_acc.setCurrentIndex(idx)
+                
         except Exception as e:
             self.view.combo_acc.clear()
             self.view.combo_acc.addItem("Select Account...", "")

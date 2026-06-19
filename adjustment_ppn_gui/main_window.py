@@ -151,25 +151,23 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         options_layout.addRow("Account Code:", self.combo_acc)
 
         # Date range inputs
-        self.tgl_awal = QDateEdit()
+        self.tgl_awal = QDateEdit(QDate(2026, 3, 1))
         self.tgl_awal.setObjectName("tgl_awal")
         self.tgl_awal.setCalendarPopup(True)
         self.tgl_awal.setDisplayFormat("yyyy-MM-dd")
-        self.tgl_awal.setDate(QDate(2026, 6, 1))
         self.tgl_awal.setEnabled(False)
 
-        self.tgl_akhir = QDateEdit()
+        self.tgl_akhir = QDateEdit(QDate(2026, 3, 31))
         self.tgl_akhir.setObjectName("tgl_akhir")
         self.tgl_akhir.setCalendarPopup(True)
         self.tgl_akhir.setDisplayFormat("yyyy-MM-dd")
-        self.tgl_akhir.setDate(QDate(2026, 6, 30))
         self.tgl_akhir.setEnabled(False)
 
         options_layout.addRow("Start Date:", self.tgl_awal)
         options_layout.addRow("End Date:", self.tgl_akhir)
 
         # Target PPN Input
-        self.target_ppn_input = QLineEdit()
+        self.target_ppn_input = QLineEdit("900000000")
         self.target_ppn_input.setObjectName("target_ppn_input")
         # Allow negative/positive floating values
         self.target_ppn_input.setValidator(QDoubleValidator(-999999999.0, 999999999.0, 2, self))
