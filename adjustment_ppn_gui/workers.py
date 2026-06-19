@@ -83,7 +83,7 @@ class TestConnectionWorker(QThread):
             self.finished_signal.emit(False, friendly_msg)
 
 class CurrentValueCalculatorWorker(QThread):
-    result_signal = pyqtSignal(float)
+    result_signal = pyqtSignal(dict)
     error_signal = pyqtSignal(str)
 
     def __init__(self, source_config, target_config, sandbox, acc, start_date, end_date):
@@ -126,8 +126,11 @@ class CurrentValueCalculatorWorker(QThread):
             row = cursor.fetchone()
             r_jual = float(row[0]) if row and row[0] is not None else 0.0
             
-            total_omset = real_jual - r_jual
-            self.result_signal.emit(total_omset)
+            self.result_signal.emit({
+                'real_jual': real_jual,
+                'r_jual': r_jual,
+                'net_omset': real_jual - r_jual
+            })
         except Exception as e:
             import traceback
             self.error_signal.emit(f"Gagal menghitung Omset: {str(e)}\n{traceback.format_exc()}")

@@ -179,7 +179,17 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         self.current_omset_input = QLineEdit("-")
         self.current_omset_input.setObjectName("current_omset_input")
         self.current_omset_input.setEnabled(False)
-        options_layout.addRow("Omset Saat Ini (REAL JUAL):", self.current_omset_input)
+        options_layout.addRow("Penjualan (REAL JUAL):", self.current_omset_input)
+
+        self.current_retur_input = QLineEdit("-")
+        self.current_retur_input.setObjectName("current_retur_input")
+        self.current_retur_input.setEnabled(False)
+        options_layout.addRow("Retur (R JUAL):", self.current_retur_input)
+
+        self.current_net_omset_input = QLineEdit("-")
+        self.current_net_omset_input.setObjectName("current_net_omset_input")
+        self.current_net_omset_input.setEnabled(False)
+        options_layout.addRow("Omset Bersih:", self.current_net_omset_input)
 
         layout.addLayout(options_layout)
 

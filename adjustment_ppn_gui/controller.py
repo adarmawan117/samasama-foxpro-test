@@ -65,8 +65,10 @@ class AdjustmentPajakController(QObject):
         self.calc_worker.error_signal.connect(on_calc_error)
         self.calc_worker.start()
 
-    def on_calc_finished(self, total_omset):
-        self.view.current_omset_input.setText(f"{total_omset:,.2f}")
+    def on_calc_finished(self, data):
+        self.view.current_omset_input.setText(f"{data['real_jual']:,.2f}")
+        self.view.current_retur_input.setText(f"{data['r_jual']:,.2f}")
+        self.view.current_net_omset_input.setText(f"{data['net_omset']:,.2f}")
         self.view.target_ppn_input.setEnabled(True)
         self.view.btn_proses.setEnabled(True)
         self.view.log_status("System: Perhitungan Omset Saat Ini selesai.")
