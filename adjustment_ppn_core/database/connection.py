@@ -244,7 +244,8 @@ def get_db_connection(sandbox=None, host=None, port=3306, user=None, password=No
                 'user': mysql_user,
                 'password': mysql_password,
                 'database': mysql_database,
-                'port': mysql_port
+                'port': mysql_port,
+                'autocommit': True
             }
             conn = pymysql.connect(**connect_kwargs)
             return MySQLConnectionWrapper(conn, connect_kwargs=connect_kwargs, connect_func=pymysql.connect)

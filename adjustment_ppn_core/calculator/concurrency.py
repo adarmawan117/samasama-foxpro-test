@@ -18,6 +18,7 @@ class DbWriterQueue:
 
     def _writer_loop(self):
         cursor = self.target_conn.cursor()
+        query_count = 0
         while self.running or not self.q.empty():
             try:
                 task = self.q.get(timeout=0.1)
@@ -26,7 +27,21 @@ class DbWriterQueue:
                 sql, params = task
                 cursor.execute(sql, params)
                 self.q.task_done()
+                
+                query_count += 1
+                if query_count >= 500:
+                    try:
+                        self.target_conn.commit()
+                    except Exception as ce:
+                        print(f"Periodic commit error: {ce}")
+                    query_count = 0
             except queue.Empty:
+                if query_count > 0:
+                    try:
+                        self.target_conn.commit()
+                    except Exception as ce:
+                        print(f"Idle commit error: {ce}")
+                    query_count = 0
                 continue
             except Exception as e:
                 print(f"DbWriterQueue Error: {e}")
