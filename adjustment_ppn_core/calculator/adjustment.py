@@ -226,7 +226,6 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
     total_receipts = len(receipt_items)
     
     log_batcher = LogBatcher(log_callback, batch_size=20)
-    db_queue = DbWriterQueue(target_conn)
     
     # Preload A1 products and tabungan
     target_cursor.execute("SELECT KODE_BRG FROM barang WHERE ACC = 'A1'")
@@ -249,6 +248,8 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
         
     savings_lock = threading.Lock()
     total_actual_reduction_lock = threading.Lock()
+    
+    db_queue = DbWriterQueue(target_conn)
     
     # Process each receipt
     def worker_task(index, f_jual, items):
@@ -716,7 +717,6 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
     target_cursor = target_conn.cursor()
     
     log_batcher = LogBatcher(log_callback, batch_size=20)
-    db_queue = DbWriterQueue(target_conn)
     gap_lock = threading.Lock()
     
     # Preload A1 products and tabungan cache
@@ -776,6 +776,8 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
         r_keys = list(receipt_to_items.keys())
         random.shuffle(r_keys)
         total_receipts = len(r_keys)
+        
+        db_queue = DbWriterQueue(target_conn)
         
         def worker_reduce(index, r_key):
             nonlocal gap_to_reduce
@@ -840,6 +842,8 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for index, r_key in enumerate(r_keys, start=1):
                 executor.submit(worker_reduce, index, r_key)
+        
+        db_queue.stop_and_wait()
 
     elif global_gap > 0.001:
         # Addition gap
@@ -861,6 +865,8 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                     'pajak': int(b_pajak) if b_pajak is not None else 0
                 }
                 
+            db_queue = DbWriterQueue(target_conn)
+            
             while gap_to_add > 200000:
                 if gap_to_add <= 1000000:
                     num_targets = 1
@@ -879,8 +885,6 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                     with gap_lock:
                         if gap_to_add <= 200000:
                             return
-                            
-                    # Draw from savings ('tambah') using savings_cache
                     selected_saving = None
                     qty_to_draw = 0
                     
@@ -1021,8 +1025,8 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                         
                 if not made_progress:
                     break
+            db_queue.stop_and_wait()
 
-    db_queue.stop_and_wait()
     log_batcher.flush()
     
     if log_callback and callable(log_callback):
