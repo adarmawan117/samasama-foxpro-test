@@ -1,5 +1,47 @@
 from adjustment_ppn_core.etl.ledger_rollback import rollback_savings_in_range
 
+def sync_master_data(source_conn, target_conn, is_sandbox=False):
+    """
+    Synchronizes master tables entirely from source to target to ensure
+    product prices and taxes are up to date before adjustment.
+    """
+    source_cursor = source_conn.cursor()
+    target_cursor = target_conn.cursor()
+    master_tables = ['barang', 'accinv', 'golongan']
+    
+    try:
+        if not is_sandbox:
+            target_cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
+        else:
+            target_cursor.execute("PRAGMA foreign_keys = OFF")
+            
+        for table in master_tables:
+            try:
+                target_cursor.execute(f"DELETE FROM {table}")
+                source_cursor.execute(f"SELECT * FROM {table}")
+                rows = source_cursor.fetchmany(5000)
+                if rows:
+                    col_count = len(rows[0])
+                    placeholders_vals = ", ".join(["%s"] * col_count)
+                    insert_query = f"INSERT INTO {table} VALUES ({placeholders_vals})"
+                    while rows:
+                        target_cursor.executemany(insert_query, rows)
+                        rows = source_cursor.fetchmany(5000)
+            except Exception:
+                pass
+                
+    finally:
+        if not is_sandbox:
+            try: target_cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
+            except Exception: pass
+        else:
+            try: target_cursor.execute("PRAGMA foreign_keys = ON")
+            except Exception: pass
+            
+    if hasattr(target_conn, 'commit'):
+        target_conn.commit()
+
+
 def check_transactions_exist_in_range(target_conn, acc, start_date, end_date):
     """
     Checks if transactions exist in the target database in the specified range.

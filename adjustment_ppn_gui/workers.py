@@ -25,7 +25,8 @@ from adjustment_ppn_core.schema.cloning import (
 from adjustment_ppn_core.etl.sync_manager import (
     check_transactions_exist_in_range,
     purge_transactions_in_range,
-    sync_raw_transactions_in_range
+    sync_raw_transactions_in_range,
+    sync_master_data
 )
 from adjustment_ppn_core.etl.ledger_rollback import (
     rollback_savings_in_range
@@ -129,10 +130,12 @@ class WorkerThread(QThread):
                     )
                     return
                 else:
+                    sync_master_data(source_conn, target_conn, is_sandbox=is_sandbox)
                     rollback_savings_in_range(target_conn, self.acc, self.start_date, self.end_date)
                     purge_transactions_in_range(target_conn, self.acc, self.start_date, self.end_date)
                     sync_raw_transactions_in_range(source_conn, target_conn, self.acc, self.start_date, self.end_date)
             else:
+                sync_master_data(source_conn, target_conn, is_sandbox=is_sandbox)
                 sync_raw_transactions_in_range(source_conn, target_conn, self.acc, self.start_date, self.end_date)
 
             def local_callback(msg):
