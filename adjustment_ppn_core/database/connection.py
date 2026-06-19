@@ -225,7 +225,7 @@ def get_db_connection(sandbox=None, host=None, port=3306, user=None, password=No
                 mysql_user = DBConfig.USER
             if mysql_password is None:
                 mysql_password = DBConfig.PASSWORD
-            if not mysql_database:
+            if mysql_database is None:
                 mysql_database = DBConfig.NAME
         except ImportError:
             # Fallback values
@@ -235,7 +235,7 @@ def get_db_connection(sandbox=None, host=None, port=3306, user=None, password=No
                 mysql_user = 'root'
             if mysql_password is None:
                 mysql_password = 'root'
-            if not mysql_database:
+            if mysql_database is None:
                 mysql_database = 'INVENTORY'
                 
         # Try importing pymysql first, fallback to mysql.connector

@@ -88,7 +88,7 @@ def clone_full_database(source_config, target_config, is_sandbox, log_callback=N
             
         # Connect to MySQL server without target database first
         temp_target_config = target_config.copy()
-        temp_target_config['database'] = None
+        temp_target_config['database'] = ""
         
         conn_server = get_db_connection(
             sandbox=False,
@@ -96,7 +96,7 @@ def clone_full_database(source_config, target_config, is_sandbox, log_callback=N
             port=temp_target_config.get('port'),
             user=temp_target_config.get('user'),
             password=temp_target_config.get('password'),
-            database=None
+            database=""
         )
         
         try:
