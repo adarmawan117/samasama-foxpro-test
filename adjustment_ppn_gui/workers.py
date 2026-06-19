@@ -109,7 +109,7 @@ class CurrentValueCalculatorWorker(QThread):
                 SELECT SUM((d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH))
                 FROM djual d
                 LEFT JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-                WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if self.sandbox else '%s'} AND d.TGL_JUAL <= {'?' if self.sandbox else '%s'} AND b.PAJAK = 1
+                WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if self.sandbox else '%s'} AND d.TGL_JUAL <= {'?' if self.sandbox else '%s'}
             """
             cursor.execute(djual_query, (*acc_tuple, self.start_date, self.end_date))
             row = cursor.fetchone()
@@ -120,7 +120,7 @@ class CurrentValueCalculatorWorker(QThread):
                 SELECT SUM((d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH))
                 FROM drjual d
                 LEFT JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-                WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if self.sandbox else '%s'} AND d.TGL_JUAL <= {'?' if self.sandbox else '%s'} AND b.PAJAK = 1
+                WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if self.sandbox else '%s'} AND d.TGL_JUAL <= {'?' if self.sandbox else '%s'}
             """
             cursor.execute(drjual_query, (*acc_tuple, self.start_date, self.end_date))
             row = cursor.fetchone()
