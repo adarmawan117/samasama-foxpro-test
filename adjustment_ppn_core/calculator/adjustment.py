@@ -255,7 +255,7 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
         nonlocal total_actual_reduction
         r_key = f_jual
         # Calculate receipt's PPN omset
-        receipt_ppn_omset = sum(item['jumlah'] * item['hrg_jual'] for item in items)
+        receipt_ppn_omset = sum(item['jumlah'] * item['actual_price'] for item in items)
         receipt_target = receipt_ppn_omset * P
         
         # Sort items by urutan DESC (bottom-to-top)
@@ -273,7 +273,7 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
             if max_q <= 0:
                 continue
                 
-            qty_to_reduce = min(max_q, int(receipt_target // item['hrg_jual']))
+            qty_to_reduce = min(max_q, int(receipt_target // item['actual_price']) if item['actual_price'] > 0 else 0)
             if qty_to_reduce > 0:
                 new_qty = item['jumlah'] - qty_to_reduce
                 if new_qty <= 0:
@@ -283,7 +283,7 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
                 else:
                     db_queue.push("UPDATE djual SET jumlah = %s WHERE urutan = %s", (new_qty, item['urutan']))
                     
-                val_reduced = qty_to_reduce * item['hrg_jual']
+                val_reduced = qty_to_reduce * item['actual_price']
                 receipt_target -= val_reduced
                 
                 with total_actual_reduction_lock:
@@ -480,7 +480,11 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                 'urutan': item['urutan'],
                 'jumlah': item['jumlah'],
                 'hrg_beli': item['hrg_beli'],
-                'hrg_jual': item['hrg_jual']
+                'hrg_jual': item['hrg_jual'],
+                'disc1': item['disc1'],
+                'disc2': item['disc2'],
+                'disc3': item['disc3'],
+                'disc_rp': item['disc_rp']
             }
             
         while receipt_target > 0.001:
@@ -570,18 +574,25 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                     
                 p_code = vs['kode_brg']
                 if p_code in local_receipt_items:
-                    local_receipt_items[p_code]['jumlah'] += qty_to_draw
-                    local_receipt_items[p_code]['modified'] = True
+                    loc_item = local_receipt_items[p_code]
+                    loc_item['jumlah'] += qty_to_draw
+                    loc_item['modified'] = True
+                    actual_price = loc_item['hrg_jual'] * ((100.0 - loc_item['disc1'])/100.0) * ((100.0 - loc_item['disc2'])/100.0) * ((100.0 - loc_item['disc3'])/100.0) - loc_item['disc_rp']
                 else:
                     local_receipt_items[p_code] = {
                         'urutan': None,
                         'jumlah': qty_to_draw,
                         'hrg_beli': vs['hrg_beli'],
                         'hrg_jual': vs['price'],
+                        'disc1': 0.0,
+                        'disc2': 0.0,
+                        'disc3': 0.0,
+                        'disc_rp': 0.0,
                         'inserted': True
                     }
+                    actual_price = vs['price']
                     
-                val_added = qty_to_draw * vs['price']
+                val_added = qty_to_draw * actual_price
                 receipt_target -= val_added
                 
                 with total_actual_addition_lock:
@@ -625,23 +636,30 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                 
                 p_code = best_product['kode_brg']
                 if p_code in local_receipt_items:
-                    local_receipt_items[p_code]['jumlah'] += best_k
-                    local_receipt_items[p_code]['modified'] = True
+                    loc_item = local_receipt_items[p_code]
+                    loc_item['jumlah'] += best_k
+                    loc_item['modified'] = True
+                    actual_price = loc_item['hrg_jual'] * ((100.0 - loc_item['disc1'])/100.0) * ((100.0 - loc_item['disc2'])/100.0) * ((100.0 - loc_item['disc3'])/100.0) - loc_item['disc_rp']
                 else:
                     local_receipt_items[p_code] = {
                         'urutan': None,
                         'jumlah': best_k,
                         'hrg_beli': best_product['hrg_beli'],
                         'hrg_jual': best_product['price'],
+                        'disc1': 0.0,
+                        'disc2': 0.0,
+                        'disc3': 0.0,
+                        'disc_rp': 0.0,
                         'inserted': True
                     }
+                    actual_price = best_product['price']
                     
                 settle_debt_with_savings_async(
                     db_queue, savings_cache, savings_lock, a1_products, 
                     acc_tuple, item_acc, p_code, best_k, tanggal_dibuat=tgl_jual
                 )
                 
-                val_injected = best_k * best_product['price']
+                val_injected = best_k * actual_price
                 receipt_target -= val_injected
                 
                 with total_actual_addition_lock:
@@ -762,31 +780,25 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
         def worker_reduce(index, r_key):
             nonlocal gap_to_reduce
             r_items = receipt_to_items[r_key]
-            r_items.sort(key=lambda x: (x[4], x[5]), reverse=True)
+            r_items.sort(key=lambda x: (x[5], x[6]), reverse=True)
             for row in r_items:
-                tgl, f_jual, kode, qty, price, urutan, item_acc = row
+                tgl, f_jual, kode, qty, h_beli, h_jual, urutan, item_acc, d1, d2, d3, drp = row
+                actual_price = h_jual * ((100.0 - float(d1))/100.0) * ((100.0 - float(d2))/100.0) * ((100.0 - float(d3))/100.0) - float(drp)
                 
                 with gap_lock:
                     if gap_to_reduce < 0.001:
                         break
                     current_gap = gap_to_reduce
                 
-                count = receipt_counts[r_key]
-                # Anti-struk kosong
-                max_q = qty if count > 1 else qty - 1
-                if max_q <= 0:
-                    continue
-                q = min(max_q, int(current_gap // price))
+                q = min(int(qty), int(current_gap // actual_price)) if actual_price > 0 else 0
                 if q > 0:
                     new_qty = qty - q
                     if new_qty <= 0:
                         db_queue.push("DELETE FROM djual WHERE urutan = %s", (urutan,))
-                        with gap_lock:
-                            receipt_counts[r_key] -= 1
                     else:
                         db_queue.push("UPDATE djual SET jumlah = %s WHERE urutan = %s", (new_qty, urutan))
                     
-                    val_reduced = q * price
+                    val_reduced = q * actual_price
                     with gap_lock:
                         gap_to_reduce -= val_reduced
                         rem_gap = gap_to_reduce
