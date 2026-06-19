@@ -144,7 +144,7 @@ class TestDualConnection(unittest.TestCase):
         
         # Verify that sqlite3.connect was called twice with 'sandbox.db'
         self.assertEqual(mock_sqlite_connect.call_count, 2)
-        mock_sqlite_connect.assert_any_call('sandbox.db')
+        mock_sqlite_connect.assert_any_call('sandbox.db', check_same_thread=False)
 
     @patch("sqlite3.connect")
     def test_sqlite_locked_exception(self, mock_sqlite_connect):

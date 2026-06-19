@@ -134,8 +134,8 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
 
     def init_databases(self, enable_foreign_keys=False):
         """Initializes source and target databases with correct table structure."""
-        src_conn = sqlite3.connect(self.src_db_path)
-        tgt_conn = sqlite3.connect(self.tgt_db_path)
+        src_conn = sqlite3.connect(self.src_db_path, check_same_thread=False)
+        tgt_conn = sqlite3.connect(self.tgt_db_path, check_same_thread=False)
         
         if enable_foreign_keys:
             src_conn.execute("PRAGMA foreign_keys = ON;")
@@ -242,8 +242,8 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         tgt_conn.close()
         
         # Establish sandbox connections that enforce foreign keys
-        source_conn = sqlite3.connect(self.src_db_path)
-        target_conn = sqlite3.connect(self.tgt_db_path)
+        source_conn = sqlite3.connect(self.src_db_path, check_same_thread=False)
+        target_conn = sqlite3.connect(self.tgt_db_path, check_same_thread=False)
         source_conn.execute("PRAGMA foreign_keys = ON;")
         target_conn.execute("PRAGMA foreign_keys = ON;")
         
@@ -298,8 +298,8 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
             tgt_conn.close()
             
             # Establish wrapped connections with SoftDelete wrappers
-            raw_src = sqlite3.connect(self.src_db_path)
-            raw_tgt = sqlite3.connect(self.tgt_db_path)
+            raw_src = sqlite3.connect(self.src_db_path, check_same_thread=False)
+            raw_tgt = sqlite3.connect(self.tgt_db_path, check_same_thread=False)
             
             # UDF mock for DATE_FORMAT in SQLite
             raw_src.create_function("DATE_FORMAT", 2, sqlite_date_format)
@@ -398,7 +398,7 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
                 soft_tgt_conn.commit()
                 
                 # Fetch output tables from target DB, filtering tabungan_dan_hutang to emulate SELECT WHERE qty > 0
-                tgt_verify = sqlite3.connect(self.tgt_db_path)
+                tgt_verify = sqlite3.connect(self.tgt_db_path, check_same_thread=False)
                 
                 for table_name in ['djual', 'drjual', 'dbeli', 'drbeli', 'tabungan_dan_hutang']:
                     # Helper query to get actual rows
@@ -526,7 +526,7 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         # Call rollback on a connection that does not have tables at all
         empty_db_fd, empty_db_path = tempfile.mkstemp(suffix=".db")
         os.close(empty_db_fd)
-        empty_conn = sqlite3.connect(empty_db_path)
+        empty_conn = sqlite3.connect(empty_db_path, check_same_thread=False)
         try:
             rollback_savings_in_range(
                 empty_conn, acc="001", start_date="2026-06-01", end_date="2026-06-30"

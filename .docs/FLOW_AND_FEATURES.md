@@ -62,18 +62,29 @@ Sistem ini bekerja layaknya sebuah tim pencatat keuangan yang menggunakan metode
    - **b. Bebas Hutang:** Setelah hutang lunas, sisa barang hasil pemotongan baru akan dimasukkan kembali sebagai celengan barang (plus) yang siap digunakan untuk penambahan omset berikutnya.
 
 ### 10. Distribusi Sisa Pembulatan (Global Gap)
-10. Akibat pembulatan pecahan desimal dan batas minimal nota, terkadang masih tersisa sedikit selisih angka (gap) setelah penyesuaian utama selesai.
-    - **a. Pembagian Selisih Kurang:** Jika omset masih kelebihan sedikit dari target, sistem akan memilih nota secara acak dan memotong barang berharga tinggi yang ada di dalamnya sampai target pas.
-    - **b. Pembagian Selisih Tambah:** Jika omset masih kurang sedikit dari target, sistem akan memilih nota secara acak, mengambil sisa celengan yang masih ada, atau menyuntikkan barang dengan nilai terdekat agar selisih tersebut tertutup sempurna.
+10. Akibat pembulatan pecahan desimal dan batas minimal nota, terkadang masih tersisa sedikit selisih angka (gap) setelah penyesuaian utama selesai. Sistem akan membagi rata sisa selisih ini ke seperempat (25%) dari total nota penjualan Anda.
+    - **a. Pembagian Selisih Kurang:** Sistem akan mendistribusikan selisih sisa secara merata dengan mengambil sebagian barang dari 25% faktur agar tidak ada faktur tunggal yang mendadak susut nilainya.
+    - **b. Pembagian Selisih Tambah:** Sistem akan mendistribusikan penambahan omset dari celengan atau menyuntikkan barang tambahan secara merata ke dalam 25% faktur yang ada, guna menghindari membengkaknya satu faktur penjualan menjadi nilai yang tidak logis.
 
-### 11. Fitur Gabungan Akun (Silang Subsidi)
-11. Jika Anda memilih opsi "ALL - A1 & A3 (Gabungan)", sistem akan memproses kedua cabang secara bersamaan dengan keuntungan "Silang Subsidi":
+### 11. Dukungan Pemrosesan Multi-Thread Cepat
+11. Menghitung ribuan transaksi dalam hitungan detik membutuhkan kekuatan komputasi yang besar. Sistem ini kini dilengkapi dukungan _multithreading_ canggih:
+    - **a. Perhitungan Otomatis Kekuatan PC:** Sistem mendeteksi jumlah core CPU (otak prosesor) komputer Anda secara otomatis, dan menggunakan hingga 70% kecepatannya agar penyesuaian PPN berjalan jauh lebih cepat.
+    - **b. Anti Komputer Nge-Hang (Lag):** Meskipun sistem menggunakan kekuatan penuh, ia akan selalu menyisakan 30% napas komputer agar Anda tetap bisa membuka aplikasi lain atau berselancar di internet tanpa kendala.
+    - **c. Antrian Penulisan Aman:** Menyimpan ribuan log data dapat berisiko bertabrakan. Oleh sebab itu, aplikasi menyediakan "Jalur Cepat Antrian Database" sehingga penyimpanan tidak pernah macet (deadlock).
+
+### 12. Auto-Sync Master Data dan Otomasi Tabel
+12. Sebagai pengaman sebelum proses dimulai, aplikasi memproteksi integritas data dengan persiapan otomatis:
+    - **a. Sinkronisasi Harga Barang:** Sistem secara otomatis akan menyalin ulang data dari tabel `barang`, `accinv`, dan `golongan` terbaru dari database asli untuk memastikan penyesuaian PPN menggunakan harga barang (HPP/Harga Jual) yang paling mutakhir.
+    - **b. Penanganan Tabel Fleksibel:** Jika ada tabel transaksi tambahan seperti `drjual` atau `drbeli` (retur) yang belum dibuat di database, aplikasi akan membiarkannya alih-alih menampilkan error (crash), sehingga alur penyesuaian dapat terus berjalan lancar.
+
+### 13. Fitur Gabungan Akun (Silang Subsidi)
+13. Jika Anda memilih opsi "ALL - A1 & A3 (Gabungan)", sistem akan memproses kedua cabang secara bersamaan dengan keuntungan "Silang Subsidi":
     - **a. Berbagi Celengan:** Kelebihan atau sisa barang hasil pemotongan (celengan) dari cabang A1 dapat secara otomatis dipakai untuk menambal kekurangan target di nota cabang A3, begitu pula sebaliknya.
     - **b. Target Gabungan:** Anda hanya perlu memasukkan satu angka target pajak, dan sistem akan membaginya secara adil ke kedua cabang sesuai besar omset masing-masing.
     - **c. Penanda Log:** Pada hasil export laporan akhir (CSV), setiap baris tindakan akan diberi penanda `[A1]` atau `[A3]` agar Anda mudah melacak dari cabang mana transaksi tersebut berasal.
 
-### 12. Aturan Prioritas A1 untuk Celengan Barang (A1 Priority Rule)
-12. Demi menjaga konsistensi pelaporan pajak barang retail dan grosir, sistem menerapkan aturan prioritas untuk akun retail A1 atas akun grosir A3:
+### 14. Aturan Prioritas A1 untuk Celengan Barang (A1 Priority Rule)
+14. Demi menjaga konsistensi pelaporan pajak barang retail dan grosir, sistem menerapkan aturan prioritas untuk akun retail A1 atas akun grosir A3:
     - **a. Prioritas Akun A1:** Sebelum menyimpan data celengan baru (`tambah`), catatan hutang (`kurang`), atau melakukan suntikan fiktif dari celengan barang, sistem akan memeriksa tabel master barang. Jika kode barang (`KODE_BRG`) tersebut terdaftar di bawah akun `A1`, maka mutasi celengan barang tersebut wajib dicatat menggunakan akun `ACC = 'A1'`, meskipun nota transaksi yang sedang diproses berasal dari akun grosir `A3`.
     - **b. Fallback Akun Asal:** Jika barang tersebut tidak terdaftar di bawah akun `A1` pada master barang, sistem akan menggunakan akun asal dari nota transaksi tersebut (misalnya tetap dicatat sebagai `A3`).
     - **c. Pembersihan Bersih (Rollback):** Saat proses pemulihan (rollback) dijalankan untuk akun target tertentu (seperti `A3`), sistem akan mendeteksi barang-barang yang dialihkan ke akun `A1` tersebut secara otomatis. Sistem akan membersihkan riwayat mutasi celengan dan catatan hutang baik yang tercatat di `A3` maupun yang dialihkan ke `A1` untuk barang-barang terkait, sehingga data kembali bersih sempurna tanpa ada catatan celengan yang tertinggal.

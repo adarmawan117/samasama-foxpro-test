@@ -145,15 +145,17 @@ class WorkerThread(QThread):
             target_val = self.target_ppn
             final_gap = 0.0
 
+            import os
+            max_workers = max(1, int(os.cpu_count() * 0.7))
             if target_val < 0:
-                global_gap = proses_pengurangan_omset(source_conn, target_conn, self.acc, self.start_date, self.end_date, target_val, log_callback=local_callback)
+                global_gap = proses_pengurangan_omset(source_conn, target_conn, self.acc, self.start_date, self.end_date, target_val, max_workers=max_workers, log_callback=local_callback)
                 if abs(global_gap) > 0.001:
-                    distribusikan_global_gap(source_conn, target_conn, self.acc, self.start_date, self.end_date, global_gap, log_callback=local_callback)
+                    distribusikan_global_gap(source_conn, target_conn, self.acc, self.start_date, self.end_date, global_gap, max_workers=max_workers, log_callback=local_callback)
                 final_gap = global_gap
             elif target_val > 0:
-                global_gap = proses_penambahan_omset(source_conn, target_conn, self.acc, self.start_date, self.end_date, target_val, log_callback=local_callback)
+                global_gap = proses_penambahan_omset(source_conn, target_conn, self.acc, self.start_date, self.end_date, target_val, max_workers=max_workers, log_callback=local_callback)
                 if abs(global_gap) > 0.001:
-                    distribusikan_global_gap(source_conn, target_conn, self.acc, self.start_date, self.end_date, global_gap, log_callback=local_callback)
+                    distribusikan_global_gap(source_conn, target_conn, self.acc, self.start_date, self.end_date, global_gap, max_workers=max_workers, log_callback=local_callback)
                 final_gap = global_gap
             else:
                 # Target PPN = 0 balancing (same as main in backend)

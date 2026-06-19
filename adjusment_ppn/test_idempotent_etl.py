@@ -174,7 +174,8 @@ class TestIdempotentETL(unittest.TestCase):
     @patch("adjustment_ppn_gui.workers.get_db_connection")
     @patch("adjustment_ppn_gui.workers.create_tabungan_dan_hutang_table")
     @patch("adjustment_ppn_gui.workers.check_transactions_exist_in_range")
-    def test_worker_thread_emits_rerun_warning_signal(self, mock_exist_in_range, mock_create_tbl, mock_get_conn, mock_exists):
+    @patch("adjustment_ppn_gui.workers.sync_master_data")
+    def test_worker_thread_emits_rerun_warning_signal(self, mock_sync, mock_exist_in_range, mock_create_tbl, mock_get_conn, mock_exists):
         """
         Verify that WorkerThread emits rerun_warning_signal when target transactions
         exist in the range, and exits without executing further processing.

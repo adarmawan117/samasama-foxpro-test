@@ -120,7 +120,7 @@ def get_db_connection(sandbox=None, host=None, port=3306, user=None, password=No
         
     if sandbox:
         db_path = database if database else 'sandbox.db'
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, check_same_thread=False)
         # Register custom UDF mock for DATE_FORMAT
         conn.create_function("DATE_FORMAT", 2, sqlite_date_format)
         return SQLiteConnectionWrapper(conn)

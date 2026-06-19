@@ -198,6 +198,27 @@ When savings are drawn:
 
 ### 5.3 Scenario 3: Fictional Injection (Fallback Tax Addition)
 If the savings ledger cannot satisfy the target addition for a receipt, the system falls back to injecting fictional product quantities.
+
+### 5.4 Scenario 4: Global Gap Distribution
+If a residual global gap exists after primary reduction or addition, the system evenly distributes this leftover gap across 25% of the total available receipts (`total_receipts // 4`). This chunking mechanism ensures that no single receipt becomes abnormally bloated with extreme quantities, maintaining realistic transaction profiles.
+
+---
+
+## 6. Concurrency and Optimization
+
+To meet performance requirements without freezing the UI or overwhelming system resources, the system employs a targeted multithreading architecture.
+
+### 6.1 Worker Threads and Dynamic CPU Allocation
+Intensive calculation loops (like checking each receipt for savings draws and fictional injections) are parallelized using Python's `ThreadPoolExecutor`. The system calculates the maximum number of worker threads dynamically using `max_workers = max(1, int(os.cpu_count() * 0.7))`. This ensures the adjustment finishes quickly without starving the host machine of computational resources.
+
+### 6.2 Thread-Safe Write Queue (`DbWriterQueue`)
+MySQL and SQLite drivers must handle high-volume write operations carefully in a multithreaded context. The `DbWriterQueue` offloads all `UPDATE`, `INSERT`, and `DELETE` queries to a dedicated, single background daemon thread.
+- Worker threads only perform `SELECT` queries (using shared connections or thread-local contexts) and calculate mathematics.
+- Write operations are pushed onto a thread-safe `queue.Queue`.
+- The `_writer_loop` pops queries and executes them sequentially. This eliminates `database is locked` SQLite errors and prevents MySQL deadlocks/race conditions.
+
+### 6.3 UI Log Batching (`LogBatcher`)
+Emitting thousands of PyQt5 signals per second from worker threads causes severe UI congestion and unresponsiveness. The `LogBatcher` intercepts log strings and groups them into batches (default size 20). Only when a batch is full (or when the process flushes at the end) does the worker emit the concatenated string via `progress_signal`, maintaining a smooth GUI experience.
 - Evaluates PPN-taxable products to find the item and quantity $k$ that minimizes the difference between $\text{price} \times k$ and the remaining target amount.
 - **Tie Breaker**: If multiple products yield the same minimum difference, the system breaks the tie using alphabetical sorting of product codes (`BRG001` > `BRG002` > others).
 - Inserts or updates the transaction in `djual`.

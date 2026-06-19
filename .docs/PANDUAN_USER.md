@@ -139,6 +139,11 @@ python python_test/adjusment_ppn/run_tests_via_python.py
 - **Solution**:
   - This crash occurs during interpreter shutdown *after* all tests have run and logs have been saved. You can verify successful execution by checking the final lines of `python_test/test_run_results.txt` for the line: `SUCCESS: True`.
 
+### 5.5 High CPU Utilization During Adjustment
+- **Symptom**: The CPU usage spikes to ~70% when pressing the "Proses" button.
+- **Cause**: The application is utilizing the new Multithreading Architecture (via `ThreadPoolExecutor`) to drastically reduce the adjustment time.
+- **Solution**: This is expected behavior. The application intelligently caps CPU usage at 70% to ensure your operating system remains responsive for other tasks.
+
 ---
 
 ## 6. A1 Priority Business Rule for Savings

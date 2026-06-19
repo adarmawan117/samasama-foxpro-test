@@ -371,14 +371,15 @@ class TestPyQt5SignalTriggers(unittest.TestCase):
     @patch("adjustment_ppn_gui.workers.get_db_connection")
     @patch("adjustment_ppn_gui.workers.create_tabungan_dan_hutang_table")
     @patch("adjustment_ppn_gui.workers.check_transactions_exist_in_range")
+    @patch("adjustment_ppn_gui.workers.distribusikan_global_gap")
     @patch("adjustment_ppn_gui.workers.proses_pengurangan_omset")
     @patch("adjustment_ppn_gui.workers.sync_master_data")
-    def test_worker_thread_reduction_success(self, mock_sync_master, mock_proses_red, mock_check_trx, mock_create_tbl, mock_get_conn, mock_exists):
+    def test_worker_thread_reduction_success(self, mock_sync_master, mock_proses_red, mock_dist_gap, mock_check_trx, mock_create_tbl, mock_get_conn, mock_exists):
         """Verify WorkerThread reduction triggers proper progression and finish signals."""
         mock_exists.return_value = True
         mock_check_trx.return_value = False
         mock_get_conn.return_value = MagicMock()
-        mock_proses_red.side_effect = lambda s, t, acc, st, end, val, log_callback: (
+        mock_proses_red.side_effect = lambda s, t, acc, st, end, val, log_callback=None, **kwargs: (
             log_callback("Reducing revenue..."),
             -150.00
         )[1]

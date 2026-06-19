@@ -5,6 +5,10 @@ Core Calculator functions for the PPN adjustment process.
 
 import random
 from collections import defaultdict
+import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from .concurrency import DbWriterQueue, LogBatcher
 
 
 def upsert_tabungan_dan_hutang(cursor, acc, kode_brg, qty, tipe, tanggal_dibuat=None):
@@ -78,8 +82,73 @@ def settle_debt_with_savings(cursor, acc_tuple, item_acc, kode_brg, best_k, tang
         # No savings found, record the entire debt
         upsert_tabungan_dan_hutang(cursor, effective_item_acc, kode_brg, best_k, 'kurang', tanggal_dibuat=tanggal_dibuat)
 
+def upsert_tabungan_dan_hutang_async(db_queue, savings_cache, savings_lock, acc, kode_brg, qty, tipe, tanggal_dibuat=None):
+    key = (acc, kode_brg, tipe)
+    with savings_lock:
+        records = savings_cache.get(key, [])
+        if records:
+            record = records[0]
+            record['qty'] += qty
+            db_queue.push(
+                "UPDATE tabungan_dan_hutang SET qty = qty + %s WHERE urutan = %s",
+                (qty, record['urutan'])
+            )
+        else:
+            db_queue.push(
+                "INSERT INTO tabungan_dan_hutang (acc, kode_brg, qty, tipe, tanggal_dibuat) VALUES (%s, %s, %s, %s, %s)",
+                (acc, kode_brg, qty, tipe, tanggal_dibuat)
+            )
+            # Optional: to prevent KeyError later, append a dummy to cache. 
+            # We don't have the real 'urutan' but we won't need it for 'tambah' in reduction or 'kurang' in addition.
+            savings_cache[key] = [{'urutan': -1, 'qty': qty}]
 
-def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date, target_ppn, log_callback=None):
+
+def settle_debt_with_savings_async(db_queue, savings_cache, savings_lock, a1_products, acc_tuple, item_acc, kode_brg, best_k, tanggal_dibuat=None):
+    is_a1 = kode_brg in a1_products
+    effective_acc_tuple = ('A1',) if is_a1 else acc_tuple
+    effective_item_acc = 'A1' if is_a1 else item_acc
+
+    tambah_records = []
+    with savings_lock:
+        for acc in effective_acc_tuple:
+            key = (acc, kode_brg, 'tambah')
+            tambah_records.extend(savings_cache.get(key, []))
+            
+    if tambah_records:
+        tambah_record = next((r for r in tambah_records if r['qty'] > 0), None)
+        if tambah_record:
+            tambah_urutan = tambah_record['urutan']
+            tambah_qty = tambah_record['qty']
+            
+            if best_k >= tambah_qty:
+                db_queue.push(
+                    "INSERT INTO log_mutasi_tabungan (id_tabungan, qty_dipakai, tanggal_dipakai) VALUES (%s, %s, %s)",
+                    (tambah_urutan, tambah_qty, tanggal_dibuat)
+                )
+                db_queue.push("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (tambah_urutan,))
+                with savings_lock:
+                    tambah_record['qty'] = 0.0
+                
+                remaining_debt = best_k - tambah_qty
+                if remaining_debt > 0:
+                    upsert_tabungan_dan_hutang_async(db_queue, savings_cache, savings_lock, effective_item_acc, kode_brg, remaining_debt, 'kurang', tanggal_dibuat=tanggal_dibuat)
+            else:
+                db_queue.push(
+                    "INSERT INTO log_mutasi_tabungan (id_tabungan, qty_dipakai, tanggal_dipakai) VALUES (%s, %s, %s)",
+                    (tambah_urutan, best_k, tanggal_dibuat)
+                )
+                db_queue.push(
+                    "UPDATE tabungan_dan_hutang SET qty = qty - %s WHERE urutan = %s",
+                    (best_k, tambah_urutan)
+                )
+                with savings_lock:
+                    tambah_record['qty'] -= best_k
+            return
+
+    upsert_tabungan_dan_hutang_async(db_queue, savings_cache, savings_lock, effective_item_acc, kode_brg, best_k, 'kurang', tanggal_dibuat=tanggal_dibuat)
+
+
+def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date, target_ppn, max_workers=1, log_callback=None):
     acc_tuple = (acc,) if isinstance(acc, str) else acc
     placeholders = ", ".join(["%s"] * len(acc_tuple))
     if log_callback and callable(log_callback):
@@ -189,8 +258,34 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
     total_actual_reduction = 0.0
     total_receipts = len(receipt_items)
     
+    log_batcher = LogBatcher(log_callback, batch_size=20)
+    db_queue = DbWriterQueue(target_conn)
+    
+    # Preload A1 products and tabungan
+    target_cursor.execute("SELECT KODE_BRG FROM barang WHERE ACC = 'A1'")
+    a1_products = {row[0] for row in target_cursor.fetchall()}
+    
+    placeholders_preload = ", ".join(["%s"] * (len(acc_tuple) + 1))
+    target_cursor.execute(f"""
+        SELECT urutan, qty, acc, kode_brg, tipe 
+        FROM tabungan_dan_hutang 
+        WHERE acc IN ({placeholders_preload}) AND qty > 0.0
+    """, (*acc_tuple, 'A1'))
+    
+    savings_cache = {}
+    for row in target_cursor.fetchall():
+        urutan, qty, row_acc, kode_brg, tipe = row
+        key = (row_acc, kode_brg, tipe)
+        if key not in savings_cache:
+            savings_cache[key] = []
+        savings_cache[key].append({'urutan': urutan, 'qty': float(qty)})
+        
+    savings_lock = threading.Lock()
+    total_actual_reduction_lock = threading.Lock()
+    
     # Process each receipt
-    for index, (f_jual, items) in enumerate(receipt_items.items(), start=1):
+    def worker_task(index, f_jual, items):
+        nonlocal total_actual_reduction
         r_key = f_jual
         # Calculate receipt's PPN omset
         receipt_ppn_omset = sum(item['jumlah'] * item['hrg_jual'] for item in items)
@@ -203,7 +298,9 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
             if receipt_target < 0.001:
                 break
             
-            count = receipt_item_counts[r_key]
+            with total_actual_reduction_lock:
+                count = receipt_item_counts[r_key]
+                
             # Anti-struk kosong
             max_q = item['jumlah'] if count > 1 else item['jumlah'] - 1
             if max_q <= 0:
@@ -213,55 +310,70 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
             if qty_to_reduce > 0:
                 new_qty = item['jumlah'] - qty_to_reduce
                 if new_qty <= 0:
-                    target_cursor.execute("DELETE FROM djual WHERE urutan = %s", (item['urutan'],))
-                    receipt_item_counts[r_key] -= 1
+                    db_queue.push("DELETE FROM djual WHERE urutan = %s", (item['urutan'],))
+                    with total_actual_reduction_lock:
+                        receipt_item_counts[r_key] -= 1
                 else:
-                    target_cursor.execute("UPDATE djual SET jumlah = %s WHERE urutan = %s", (new_qty, item['urutan']))
+                    db_queue.push("UPDATE djual SET jumlah = %s WHERE urutan = %s", (new_qty, item['urutan']))
                     
                 val_reduced = qty_to_reduce * item['hrg_jual']
                 receipt_target -= val_reduced
-                total_actual_reduction += val_reduced
+                
+                with total_actual_reduction_lock:
+                    total_actual_reduction += val_reduced
+                    current_reduction = total_actual_reduction
 
-                if log_callback and callable(log_callback):
-                    remaining_gap = target_val - total_actual_reduction
-                    log_callback(f"[{item['item_acc']}] Action: Reduce Quantity [{index}/{total_receipts}] | Receipt: {f_jual} | Product: {item['kode_brg']} | Qty Reduced: {qty_to_reduce} | Value: {val_reduced} | Remaining Gap: {remaining_gap}")
+                remaining_gap = target_val - current_reduction
+                log_batcher.add_log(f"[{item['item_acc']}] Action: Reduce Quantity [{index}/{total_receipts}] | Receipt: {f_jual} | Product: {item['kode_brg']} | Qty Reduced: {qty_to_reduce} | Value: {val_reduced} | Remaining Gap: {remaining_gap}")
                 
                 # Self-healing and savings
                 # Check A1 Priority Rule
-                target_cursor.execute("SELECT 1 FROM barang WHERE ACC = 'A1' AND KODE_BRG = %s", (item['kode_brg'],))
-                is_a1 = target_cursor.fetchone() is not None
+                is_a1 = item['kode_brg'] in a1_products
                 effective_acc_tuple = ('A1',) if is_a1 else acc_tuple
                 effective_item_acc = 'A1' if is_a1 else item['item_acc']
 
-                placeholders_eff = ", ".join(["%s"] * len(effective_acc_tuple))
-                target_cursor.execute(
-                    f"SELECT urutan, qty, acc FROM tabungan_dan_hutang WHERE acc IN ({placeholders_eff}) AND kode_brg = %s AND tipe = 'kurang' AND qty > 0.0",
-                    (*effective_acc_tuple, item['kode_brg'])
-                )
-                debt_row = target_cursor.fetchone()
-                if debt_row:
-                    debt_urutan, debt_qty, _ = debt_row
-                    debt_qty = abs(debt_qty)
+                debt_records = []
+                with savings_lock:
+                    for acc in effective_acc_tuple:
+                        key = (acc, item['kode_brg'], 'kurang')
+                        debt_records.extend(savings_cache.get(key, []))
+
+                debt_record = next((r for r in debt_records if r['qty'] > 0), None)
+                if debt_record:
+                    debt_urutan = debt_record['urutan']
+                    debt_qty = debt_record['qty']
                     if qty_to_reduce >= debt_qty:
-                        target_cursor.execute("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (debt_urutan,))
+                        db_queue.push("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (debt_urutan,))
+                        with savings_lock:
+                            debt_record['qty'] = 0.0
                         rem_qty = qty_to_reduce - debt_qty
                         if rem_qty > 0:
-                            upsert_tabungan_dan_hutang(target_cursor, effective_item_acc, item['kode_brg'], rem_qty, 'tambah', tanggal_dibuat=item['tgl_jual'])
+                            upsert_tabungan_dan_hutang_async(db_queue, savings_cache, savings_lock, effective_item_acc, item['kode_brg'], rem_qty, 'tambah', tanggal_dibuat=item['tgl_jual'])
                     else:
-                        target_cursor.execute(
+                        db_queue.push(
                             "UPDATE tabungan_dan_hutang SET qty = qty - %s WHERE urutan = %s",
                             (qty_to_reduce, debt_urutan)
                         )
+                        with savings_lock:
+                            debt_record['qty'] -= qty_to_reduce
                 else:
-                    upsert_tabungan_dan_hutang(target_cursor, effective_item_acc, item['kode_brg'], qty_to_reduce, 'tambah', tanggal_dibuat=item['tgl_jual'])
-                    
+                    upsert_tabungan_dan_hutang_async(db_queue, savings_cache, savings_lock, effective_item_acc, item['kode_brg'], qty_to_reduce, 'tambah', tanggal_dibuat=item['tgl_jual'])
+
+    # Execute Multithreading
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for index, (f_jual, items) in enumerate(receipt_items.items(), start=1):
+            executor.submit(worker_task, index, f_jual, items)
+            
+    db_queue.stop_and_wait()
+    log_batcher.flush()
+    
     global_gap = target_omset_change + total_actual_reduction
     if log_callback and callable(log_callback):
         log_callback(f"Action: End Reduction | Total Reduced: {total_actual_reduction} | Final Gap: {global_gap}")
     return global_gap
 
 
-def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date, target_ppn, log_callback=None):
+def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date, target_ppn, max_workers=1, log_callback=None):
     acc_tuple = (acc,) if isinstance(acc, str) else acc
     placeholders = ", ".join(["%s"] * len(acc_tuple))
     target_val = abs(float(target_ppn)) if target_ppn is not None else 0.0
@@ -523,7 +635,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
     return global_gap
 
 
-def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date, global_gap, log_callback=None):
+def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date, global_gap, max_workers=1, log_callback=None):
     acc_tuple = (acc,) if isinstance(acc, str) else acc
     placeholders = ", ".join(["%s"] * len(acc_tuple))
     if log_callback and callable(log_callback):
