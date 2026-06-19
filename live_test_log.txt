@@ -136,6 +136,6 @@ test_window_close_guard_bypass_during_cloning (test_stress_challenger.TestStress
 Stress: Verify that closing the window during cloning terminates the thread without warning. ... ok
 
 ----------------------------------------------------------------------
-Ran 68 tests in 8.623s
+Ran 68 tests in 7.358s
 
 OK (expected failures=1)

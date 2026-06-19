@@ -452,10 +452,11 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
     
     def refill_global_pool():
         pool = []
+        stripped_accs = {a.strip() for a in acc_tuple}
         for (b_acc, b_kode), b_info in barang_cache.items():
-            if b_info['pajak'] == 1 and b_acc in acc_tuple:
+            if b_info['pajak'] == 1 and (b_acc is not None and b_acc.strip() in stripped_accs):
                 pool.append({
-                    'acc': b_acc,
+                    'acc': b_acc.strip() if b_acc else b_acc,
                     'kode_brg': b_kode,
                     'price': b_info['harga11'],
                     'hrg_beli': b_info['hrg_beli']
@@ -470,7 +471,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
     db_queue = DbWriterQueue(target_conn)
     
     def worker_task(index, tgl_jual, f_jual, item_acc):
-        nonlocal total_actual_addition
+        nonlocal total_actual_addition, global_product_pool
         receipt_target = receipt_totals[f_jual] * P
         
         local_receipt_items = {}
@@ -597,17 +598,18 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
             
             with global_product_lock:
                 found_idx = -1
+                clean_item_acc = item_acc.strip() if item_acc else item_acc
                 for i, p in enumerate(global_product_pool):
-                    if p['acc'] == item_acc and 0.001 < p['price'] <= receipt_target + 0.001:
+                    if p['acc'] == clean_item_acc and 0.001 < p['price'] <= receipt_target + 0.001:
                         found_idx = i
                         break
                 
                 if found_idx == -1:
-                    has_acc = any(p['acc'] == item_acc for p in global_product_pool)
+                    has_acc = any(p['acc'] == clean_item_acc for p in global_product_pool)
                     if not has_acc:
                         global_product_pool = refill_global_pool()
                         for i, p in enumerate(global_product_pool):
-                            if p['acc'] == item_acc and 0.001 < p['price'] <= receipt_target + 0.001:
+                            if p['acc'] == clean_item_acc and 0.001 < p['price'] <= receipt_target + 0.001:
                                 found_idx = i
                                 break
                                 
@@ -665,10 +667,19 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                 )
                 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = []
         for index, (tgl_jual, f_jual, item_acc) in enumerate(receipt_keys, start=1):
-            executor.submit(worker_task, index, tgl_jual, f_jual, item_acc)
+            futures.append(executor.submit(worker_task, index, tgl_jual, f_jual, item_acc))
             
-    db_queue.stop_and_wait()
+        for future in futures:
+            try:
+                future.result()
+            except Exception as e:
+                import traceback
+                error_msg = f"Action: Error | Exception in worker_task: {str(e)} \n {traceback.format_exc()}"
+                if log_callback:
+                    log_callback(error_msg)
+                raise Exception("Exception in worker_task")
     log_batcher.flush()
     
     global_gap = float(target_omset_change) - total_actual_addition
@@ -936,10 +947,11 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                     if receipt_chunk > 0.001:
                         # Find product to inject
                         ppn_products = []
+                        stripped_accs = {a.strip() for a in acc_tuple}
                         for (b_acc, b_kode), b_info in barang_cache.items():
-                            if b_acc in acc_tuple and b_info['pajak'] == 1:
+                            if (b_acc is not None and b_acc.strip() in stripped_accs) and b_info['pajak'] == 1:
                                 ppn_products.append((b_kode, b_info['harga11'], b_info['hrg_beli']))
-                                
+                               
                         if ppn_products:
                             ppn_products.sort(key=lambda x: (x[1], x[0]))
                             best_p = None
@@ -981,8 +993,19 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                                 log_batcher.add_log(f"[{item_acc}] Action: Distribute Addition Gap (Injection) [{index}/{total_targets}] | Receipt: {f_jual} | Product: {p_code} | Qty Injected: {best_k} | Value: {val_added} | Remaining Gap: {rem_gap}")
                                 
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = []
                     for index, (tgl_jual, f_jual, item_acc) in enumerate(target_receipts, start=1):
-                        executor.submit(worker_add, index, tgl_jual, f_jual, item_acc)
+                        futures.append(executor.submit(worker_add, index, tgl_jual, f_jual, item_acc))
+                        
+                    for future in futures:
+                        try:
+                            future.result()
+                        except Exception as e:
+                            import traceback
+                            error_msg = f"Action: Error | Exception in worker_add: {str(e)} \n {traceback.format_exc()}"
+                            if log_callback:
+                                log_callback(error_msg)
+                            raise Exception("Exception in worker_add")
                         
                 if not made_progress:
                     break
