@@ -1,6 +1,11 @@
-# -*- coding: utf-8 -*-
 import sys
 import traceback
+import faulthandler
+
+# Aktifkan faulthandler untuk menangkap C-level crashes (Segfault, Abort, dll)
+crash_file = open("crash_log_c.txt", "w")
+faulthandler.enable(file=crash_file)
+
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from adjustment_ppn_gui import ProsesAdjustmentPajakApp, AdjustmentPajakController
 

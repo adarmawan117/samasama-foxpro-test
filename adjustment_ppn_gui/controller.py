@@ -200,79 +200,83 @@ class AdjustmentPajakController(QObject):
             self.view.log_status(f"System: Connection test failed: {err_msg}")
 
     def load_accounts(self):
-        self.view.combo_acc.clear()
-        self.view.combo_acc.addItem("Select Account...", "")
-
-        db_path = self.view.get_source_db().strip()
-        if not db_path:
-            return
-
-        is_sqlite = db_path.lower().endswith(('.db', '.sqlite'))
-        if is_sqlite and not os.path.exists(db_path):
-            return
-
-        conn = None
+        self.view.combo_acc.blockSignals(True)
         try:
-            if is_sqlite:
-                conn = sqlite3.connect(db_path)
-                cursor = conn.cursor()
-                cursor.execute("SELECT ACC, NAMA_ACC FROM accinv ORDER BY ACC")
-                records = cursor.fetchall()
-                if not records:
-                    cursor.execute("SELECT DISTINCT ACC FROM barang ORDER BY ACC")
-                    records = [(r[0], f"Account {r[0]}") for r in cursor.fetchall() if r[0]]
-            else:
-                source_config = {
-                    'host': self.view.source_host_input.text().strip(),
-                    'port': self.view.source_port_input.text().strip(),
-                    'user': self.view.source_user_input.text().strip(),
-                    'password': self.view.source_pass_input.text().strip(),
-                    'database': db_path
-                }
-                conn = get_db_connection(sandbox=False, **source_config)
-                cursor = conn.cursor()
-                cursor.execute("SELECT ACC, NAMA_ACC FROM accinv ORDER BY ACC")
-                records = cursor.fetchall()
-                if not records:
-                    cursor.execute("SELECT DISTINCT ACC FROM barang ORDER BY ACC")
-                    records = [(r[0], f"Account {r[0]}") for r in cursor.fetchall() if r[0]]
+            self.view.combo_acc.clear()
+            self.view.combo_acc.addItem("Select Account...", "")
 
-            self.view.combo_acc.clear()
-            self.view.combo_acc.addItem("Select Account...", "")
-            
-            # Clean records to remove trailing spaces from FoxPro/MySQL CHAR fields
-            clean_records = []
-            for rec in records:
-                acc_code = str(rec[0]).strip() if rec[0] else ""
-                acc_name = str(rec[1]).strip() if rec[1] else f"Account {acc_code}"
-                if acc_code:
-                    clean_records.append((acc_code, acc_name))
-            
-            # Check if A1 and A3 both exist
-            has_a1 = any(r[0] == 'A1' for r in clean_records)
-            has_a3 = any(r[0] == 'A3' for r in clean_records)
-            
-            if has_a1 and has_a3:
-                self.view.combo_acc.addItem("ALL - A1 & A3 (Gabungan)", "ALL")
+            db_path = self.view.get_source_db().strip()
+            if not db_path:
+                return
+
+            is_sqlite = db_path.lower().endswith(('.db', '.sqlite'))
+            if is_sqlite and not os.path.exists(db_path):
+                return
+
+            conn = None
+            try:
+                if is_sqlite:
+                    conn = sqlite3.connect(db_path)
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT ACC, NAMA_ACC FROM accinv ORDER BY ACC")
+                    records = cursor.fetchall()
+                    if not records:
+                        cursor.execute("SELECT DISTINCT ACC FROM barang ORDER BY ACC")
+                        records = [(r[0], f"Account {r[0]}") for r in cursor.fetchall() if r[0]]
+                else:
+                    source_config = {
+                        'host': self.view.source_host_input.text().strip(),
+                        'port': self.view.source_port_input.text().strip(),
+                        'user': self.view.source_user_input.text().strip(),
+                        'password': self.view.source_pass_input.text().strip(),
+                        'database': db_path
+                    }
+                    conn = get_db_connection(sandbox=False, **source_config)
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT ACC, NAMA_ACC FROM accinv ORDER BY ACC")
+                    records = cursor.fetchall()
+                    if not records:
+                        cursor.execute("SELECT DISTINCT ACC FROM barang ORDER BY ACC")
+                        records = [(r[0], f"Account {r[0]}") for r in cursor.fetchall() if r[0]]
+
+                self.view.combo_acc.clear()
+                self.view.combo_acc.addItem("Select Account...", "")
                 
-            for rec in clean_records:
-                self.view.combo_acc.addItem(f"{rec[0]} - {rec[1]}", rec[0])
+                # Clean records to remove trailing spaces from FoxPro/MySQL CHAR fields
+                clean_records = []
+                for rec in records:
+                    acc_code = str(rec[0]).strip() if rec[0] else ""
+                    acc_name = str(rec[1]).strip() if rec[1] else f"Account {acc_code}"
+                    if acc_code:
+                        clean_records.append((acc_code, acc_name))
                 
-            # Default to A1 for testing phase
-            idx = self.view.combo_acc.findData("A1")
-            if idx >= 0:
-                self.view.combo_acc.setCurrentIndex(idx)
+                # Check if A1 and A3 both exist
+                has_a1 = any(r[0] == 'A1' for r in clean_records)
+                has_a3 = any(r[0] == 'A3' for r in clean_records)
                 
-        except Exception as e:
-            self.view.combo_acc.clear()
-            self.view.combo_acc.addItem("Select Account...", "")
-            self.view.log_status(f"System: Error loading accounts: {e}")
+                if has_a1 and has_a3:
+                    self.view.combo_acc.addItem("ALL - A1 & A3 (Gabungan)", "ALL")
+                    
+                for rec in clean_records:
+                    self.view.combo_acc.addItem(f"{rec[0]} - {rec[1]}", rec[0])
+                    
+                # Default to A1 for testing phase
+                idx = self.view.combo_acc.findData("A1")
+                if idx >= 0:
+                    self.view.combo_acc.setCurrentIndex(idx)
+                    
+            except Exception as e:
+                self.view.combo_acc.clear()
+                self.view.combo_acc.addItem("Select Account...", "")
+                self.view.log_status(f"System: Error loading accounts: {e}")
+            finally:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
         finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+            self.view.combo_acc.blockSignals(False)
 
     def click_proses(self):
         source_db = self.view.get_source_db().strip()

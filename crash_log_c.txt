@@ -1,0 +1,13 @@
+Windows fatal exception: access violation
+
+Thread 0x00001b2c (most recent call first):
+  <no Python frame>
+
+Current thread 0x00001174 (most recent call first):
+  File "D:\ADR_PROGRAMMING\samasama-foxpro-test-master\adjustment_ppn_gui\controller.py", line 57 in on_inputs_changed
+  File "D:\ADR_PROGRAMMING\samasama-foxpro-test-master\adjustment_ppn_gui\controller.py", line 204 in load_accounts
+  File "D:\ADR_PROGRAMMING\samasama-foxpro-test-master\adjustment_ppn_gui\controller.py", line 138 in on_test_conn_db_not_found
+  File "D:\ADR_PROGRAMMING\samasama-foxpro-test-master\run_gui.py", line 39 in <module>
+
+Current thread's C stack trace (most recent call first):
+  <cannot get C stack on this system>
