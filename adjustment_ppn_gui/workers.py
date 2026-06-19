@@ -101,7 +101,10 @@ class CurrentValueCalculatorWorker(QThread):
             conn = get_db_connection(sandbox=self.sandbox, **self.source_config)
             cursor = conn.cursor()
             
-            acc_tuple = self.acc if isinstance(self.acc, (list, tuple)) else (self.acc,)
+            if self.acc == "ALL":
+                acc_tuple = ('A1', 'A3')
+            else:
+                acc_tuple = self.acc if isinstance(self.acc, (list, tuple)) else (self.acc,)
             placeholders = ", ".join(["?"] if self.sandbox else ["%s"] * len(acc_tuple))
             
             # Real Jual (Penjualan)
