@@ -247,6 +247,7 @@ def get_db_connection(sandbox=None, host=None, port=3306, user=None, password=No
                 'password': mysql_password,
                 'database': mysql_database,
                 'port': mysql_port,
+                'charset': 'utf8',
                 'autocommit': True
             }
             conn = pymysql.connect(**connect_kwargs)
@@ -258,10 +259,12 @@ def get_db_connection(sandbox=None, host=None, port=3306, user=None, password=No
                 'user': mysql_user,
                 'password': mysql_password,
                 'database': mysql_database,
+                'charset': 'utf8',
                 'port': mysql_port
             }
             conn = mysql.connector.connect(**connect_kwargs)
             return MySQLConnectionWrapper(conn, connect_kwargs=connect_kwargs, connect_func=mysql.connector.connect)
+
 
 
 def test_dual_connection(source_config, target_config, sandbox=False):
