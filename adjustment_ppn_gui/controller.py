@@ -46,17 +46,30 @@ class AdjustmentPajakController(QObject):
         end_date = self.view.get_end_date()
         
         self.view.current_omset_input.setText("Menghitung...")
+        self.view.target_ppn_input.setEnabled(False)
+        self.view.btn_proses.setEnabled(False)
+        self.view.log_status("System: Sedang menghitung Omset Saat Ini (REAL JUAL)...")
         
         if self.calc_worker is not None and self.calc_worker.isRunning():
             self.calc_worker.terminate()
             
         self.calc_worker = CurrentValueCalculatorWorker(source_config, {}, is_sandbox, acc, start_date, end_date)
         self.calc_worker.result_signal.connect(self.on_calc_finished)
-        self.calc_worker.error_signal.connect(lambda err: self.view.current_omset_input.setText("Error"))
+        
+        def on_calc_error(err):
+            self.view.current_omset_input.setText("Error")
+            self.view.target_ppn_input.setEnabled(True)
+            self.view.btn_proses.setEnabled(True)
+            self.view.log_status(f"System Error: Gagal menghitung Omset Saat Ini. {err}")
+            
+        self.calc_worker.error_signal.connect(on_calc_error)
         self.calc_worker.start()
 
     def on_calc_finished(self, total_omset):
         self.view.current_omset_input.setText(f"{total_omset:,.2f}")
+        self.view.target_ppn_input.setEnabled(True)
+        self.view.btn_proses.setEnabled(True)
+        self.view.log_status("System: Perhitungan Omset Saat Ini selesai.")
 
     def browse_source_db(self):
         file_name = self.view.get_open_file_name(
