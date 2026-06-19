@@ -173,7 +173,7 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         # Allow negative/positive floating values
         self.target_ppn_input.setValidator(QDoubleValidator(-999999999.0, 999999999.0, 2, self))
         self.target_ppn_input.setEnabled(False)
-        options_layout.addRow("Target PPN Adjustment:", self.target_ppn_input)
+        options_layout.addRow("Target Penjualan (REAL JUAL):", self.target_ppn_input)
 
         # Current Omset (REAL JUAL) Input
         self.current_omset_input = QLineEdit("-")
