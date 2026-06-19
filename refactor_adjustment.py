@@ -8,7 +8,7 @@ with open(file_path, "r", encoding="utf-8") as f:
 
 # Extract the block from "elif global_gap > 0.001:" to "if log_callback and callable(log_callback):"
 start_str = "    elif global_gap > 0.001:"
-end_str = "    if log_callback and callable(log_callback):"
+end_str = "\n    if log_callback and callable(log_callback):\n        final_gap = 0.0"
 
 start_idx = content.find(start_str)
 if start_idx == -1:
@@ -20,12 +20,7 @@ if end_idx == -1:
     print("End string not found!")
     sys.exit(1)
 
-# Ensure the end string starts on a new line
-if content[end_idx-1] != '\n':
-    end_idx = content.rfind('\n', start_idx, end_idx) + 1
-else:
-    # go back to the exact start of the end_str line
-    pass
+end_idx += 1 # skip the initial newline of end_str
 
 new_block = """    elif global_gap > 0.001:
         # Addition gap

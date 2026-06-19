@@ -780,57 +780,6 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                 if not made_progress:
                     break
 
-
-            if gap_to_add > 0.001:
-                source_cursor.execute(
-                    f"SELECT KODE_BRG, HARGA11, HRG_BELI FROM barang WHERE ACC IN ({placeholders}) AND PAJAK = 1",
-                    (*acc_tuple,)
-                )
-                ppn_products = list(source_cursor.fetchall())
-                if ppn_products:
-                    ppn_products.sort(key=lambda x: (x[1], x[0]))
-                    best_p = None
-                    best_k = 0
-                    min_diff = float('inf')
-                    for p in ppn_products:
-                        p_code, p_price, p_beli = p
-                        if p_price < 0.001 or p_price > gap_to_add + 0.001:
-                            continue
-                        k = round(gap_to_add / p_price)
-                        if k < 1:
-                            k = 1
-                        diff = abs(p_price * k - gap_to_add)
-                        if diff < min_diff - 0.001:
-                            min_diff = diff
-                            best_p = p
-                            best_k = k
-                        elif abs(diff - min_diff) < 0.001:
-                            if best_p is None or p_price > best_p[1]:
-                                min_diff = diff
-                                best_p = p
-                                best_k = k
-                    if best_p:
-                        p_code, p_price, p_beli = best_p
-                        target_cursor.execute(
-                            "SELECT urutan FROM djual WHERE ACC = %s AND TGL_JUAL = %s AND F_JUAL = %s AND KODE_BRG = %s",
-                            (item_acc, tgl_jual, f_jual, p_code)
-                        )
-                        existing_row = target_cursor.fetchone()
-                        if existing_row:
-                            target_cursor.execute("UPDATE djual SET jumlah = jumlah + %s WHERE urutan = %s", (best_k, existing_row[0]))
-                        else:
-                            target_cursor.execute(
-                                "INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN) "
-                                "VALUES (%s, %s, %s, %s, %s, %s, %s, 0.0, 0.0, 0.0, 0.0, 10.0)",
-                                (tgl_jual, f_jual, item_acc, p_code, best_k, p_beli, p_price)
-                            )
-                        settle_debt_with_savings(target_cursor, acc_tuple, item_acc, p_code, best_k, tanggal_dibuat=tgl_jual)
-                        
-                        gap_to_add -= best_k * p_price
-
-                        if log_callback and callable(log_callback):
-                            log_callback(f"[{item_acc}] Action: Distribute Addition Gap (Injection) | Receipt: {f_jual} | Product: {p_code} | Qty Injected: {best_k} | Value: {best_k * p_price} | Remaining Gap: {gap_to_add}")
-
     if log_callback and callable(log_callback):
         final_gap = 0.0
         if global_gap < -0.001:
