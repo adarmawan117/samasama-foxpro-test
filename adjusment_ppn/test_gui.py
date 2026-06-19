@@ -41,14 +41,14 @@ def create_mock_db(db_path):
             KODE_BRG VARCHAR(10) NOT NULL,
             NAMA_BRG VARCHAR(75) NOT NULL DEFAULT '',
             PAJAK INT NOT NULL,
-            HRG_JUAL DOUBLE NOT NULL DEFAULT 0.0,
+            HARGA11 DOUBLE NOT NULL DEFAULT 0.0,
             HRG_BELI DOUBLE NOT NULL DEFAULT 0.0,
             URUTAN INTEGER PRIMARY KEY AUTOINCREMENT,
             UNIQUE (ACC, KODE_BRG)
         )
     """)
-    cursor.execute("INSERT OR IGNORE INTO barang (ACC, KODE_BRG, NAMA_BRG, PAJAK, HRG_JUAL, HRG_BELI) VALUES ('001', 'BRG001', 'Barang PPN 1', 1, 10000.0, 8000.0)")
-    cursor.execute("INSERT OR IGNORE INTO barang (ACC, KODE_BRG, NAMA_BRG, PAJAK, HRG_JUAL, HRG_BELI) VALUES ('001', 'BRG002', 'Barang PPN 2', 1, 15000.0, 12000.0)")
+    cursor.execute("INSERT OR IGNORE INTO barang (ACC, KODE_BRG, NAMA_BRG, PAJAK, HARGA11, HRG_BELI) VALUES ('001', 'BRG001', 'Barang PPN 1', 1, 10000.0, 8000.0)")
+    cursor.execute("INSERT OR IGNORE INTO barang (ACC, KODE_BRG, NAMA_BRG, PAJAK, HARGA11, HRG_BELI) VALUES ('001', 'BRG002', 'Barang PPN 2', 1, 15000.0, 12000.0)")
     
     # 3. Create djual table (Sales Transactions)
     cursor.execute("""
@@ -279,7 +279,7 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         # Ensure combo box has options loaded from database
         self.assertGreater(self.window.combo_acc.count(), 1)
         # Index 0 is placeholder, Index 1 is ALL, Index 2 should be Account '001'
-        self.assertEqual(self.window.combo_acc.itemData(2), "001")
+        self.assertEqual(self.window.combo_acc.itemData(1), ("001",))
         # Ensure the components are enabled
         self.assertTrue(self.window.combo_acc.isEnabled())
 
@@ -293,7 +293,7 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
         self.window.load_accounts()
         QApplication.processEvents()
         
-        self.window.combo_acc.setCurrentIndex(2) # Account 001
+        self.window.combo_acc.setCurrentIndex(1) # Account 001
         self.window.tgl_awal.setDate(QDate(2026, 6, 1))
         self.window.tgl_akhir.setDate(QDate(2026, 6, 30))
         self.window.target_ppn_input.setText("-15000.0") # Target decrease
@@ -438,7 +438,7 @@ class TestPPNAdjustmentGUI(unittest.TestCase):
             QApplication.processEvents()
             # It should load the accounts successfully because .DB is recognized
             self.assertGreater(self.window.combo_acc.count(), 1)
-            self.assertEqual(self.window.combo_acc.itemData(2), "001")
+            self.assertEqual(self.window.combo_acc.itemData(1), ("001",))
         finally:
             try:
                 os.remove(db_path_upper)

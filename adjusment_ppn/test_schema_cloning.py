@@ -56,7 +56,7 @@ class TestSchemaCloningLogic(unittest.TestCase):
             "  `KODE_BRG` varchar(10) NOT NULL,\n"
             "  `NAMA_BRG` varchar(75) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL DEFAULT '',\n"
             "  `PAJAK` int(11) NOT NULL,\n"
-            "  `HRG_JUAL` double NOT NULL DEFAULT '0',\n"
+            "  `HARGA11` double NOT NULL DEFAULT '0',\n"
             "  PRIMARY KEY (`ACC`,`KODE_BRG`)\n"
             ") ENGINE=InnoDB DEFAULT CHARSET=latin1;"
         )
@@ -372,7 +372,8 @@ class TestPyQt5SignalTriggers(unittest.TestCase):
     @patch("adjustment_ppn_gui.workers.create_tabungan_dan_hutang_table")
     @patch("adjustment_ppn_gui.workers.check_transactions_exist_in_range")
     @patch("adjustment_ppn_gui.workers.proses_pengurangan_omset")
-    def test_worker_thread_reduction_success(self, mock_proses_red, mock_check_trx, mock_create_tbl, mock_get_conn, mock_exists):
+    @patch("adjustment_ppn_gui.workers.sync_master_data")
+    def test_worker_thread_reduction_success(self, mock_sync_master, mock_proses_red, mock_check_trx, mock_create_tbl, mock_get_conn, mock_exists):
         """Verify WorkerThread reduction triggers proper progression and finish signals."""
         mock_exists.return_value = True
         mock_check_trx.return_value = False

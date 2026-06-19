@@ -339,7 +339,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                         continue
 
                 source_cursor.execute(
-                    "SELECT HRG_JUAL, HRG_BELI, PAJAK FROM barang WHERE ACC = %s AND KODE_BRG = %s",
+                    "SELECT HARGA11, HRG_BELI, PAJAK FROM barang WHERE ACC = %s AND KODE_BRG = %s",
                     (s_acc, s_kode)
                 )
                 b_row = source_cursor.fetchone()
@@ -431,7 +431,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                     
             # Fictional injection
             source_cursor.execute(
-                "SELECT b.KODE_BRG, b.HRG_JUAL, b.HRG_BELI "
+                "SELECT b.KODE_BRG, b.HARGA11, b.HRG_BELI "
                 "FROM barang b "
                 "WHERE b.ACC = %s AND b.PAJAK = 1 "
                 "UNION "
@@ -440,7 +440,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                 "WHERE d.ACC = %s AND d.F_JUAL = %s AND d.F_PPN > 0",
                 (item_acc, item_acc, f_jual)
             )
-            all_ppn_products = source_cursor.fetchall()
+            all_ppn_products = list(source_cursor.fetchall())
             if not all_ppn_products:
                 break
                 
@@ -658,7 +658,7 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                         continue
 
                 source_cursor.execute(
-                    "SELECT HRG_JUAL, HRG_BELI, PAJAK FROM barang WHERE ACC = %s AND KODE_BRG = %s",
+                    "SELECT HARGA11, HRG_BELI, PAJAK FROM barang WHERE ACC = %s AND KODE_BRG = %s",
                     (s_acc, s_kode)
                 )
                 b_row = source_cursor.fetchone()
@@ -708,10 +708,10 @@ def distribusikan_global_gap(source_conn, target_conn, acc, start_date, end_date
                         
             if gap_to_add > 0.001:
                 source_cursor.execute(
-                    f"SELECT KODE_BRG, HRG_JUAL, HRG_BELI FROM barang WHERE ACC IN ({placeholders}) AND PAJAK = 1",
+                    f"SELECT KODE_BRG, HARGA11, HRG_BELI FROM barang WHERE ACC IN ({placeholders}) AND PAJAK = 1",
                     (*acc_tuple,)
                 )
-                ppn_products = source_cursor.fetchall()
+                ppn_products = list(source_cursor.fetchall())
                 if ppn_products:
                     ppn_products.sort(key=lambda x: (x[1], x[0]))
                     best_p = None
