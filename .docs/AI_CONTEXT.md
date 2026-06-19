@@ -205,8 +205,8 @@ When savings are drawn:
 
 ### 5.4 Scenario 4: Fictional Injection (Fallback Tax Addition)
 If the savings ledger cannot satisfy the target addition for a receipt, the system falls back to injecting fictional product quantities. The system uses the **`HARGA11`** (smallest unit price) from the master `barang` table for any injected products.
-- **Selection**: Iterates through all available PPN-taxable products in the system.
-- **Best Fit**: Finds a product whose price allows for a quantity $k \ge 1$ such that $\text{price} \times k$ is as close as possible to the remaining target.
+- **Global Exhaustion Pool**: Iterates through all available PPN-taxable products loaded into a globally shuffled pool. Once a product is selected and injected, it is **popped permanently** from the pool. If the pool is exhausted, it resets and rebuilds from scratch. This ensures high variance and prevents auditor pattern detection.
+- **QTY Randomization & Best Fit**: Finds the maximum possible quantity $max\_k$ for the selected product without exceeding the remaining target. Instead of injecting the maximum immediately, it randomizes the injection quantity $k = random.randint(1, max\_k)$. This forces the receipt to require multiple different products to fill the gap, simulating natural shopping behavior.
 - **Debt Accrual**: The injected quantity is recorded in `tabungan_dan_hutang` as a debt (`kurang`), which can be settled by future reductions (Self-Healing).
 
 ### 5.5 Scenario 5: Global Gap Distribution

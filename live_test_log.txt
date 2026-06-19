@@ -1,0 +1,141 @@
+test_mysql_missing_config_keys (test_challenger.TestDualConnectionChallenger.test_mysql_missing_config_keys)
+Verify default fallbacks when some configuration keys are missing or None. ... ok
+test_mysql_port_empty_or_none (test_challenger.TestDualConnectionChallenger.test_mysql_port_empty_or_none)
+Verify that empty/none port defaults to 3306 and does not crash. ... ok
+test_mysql_port_invalid_non_integer (test_challenger.TestDualConnectionChallenger.test_mysql_port_invalid_non_integer)
+Verify that invalid port raises ValueError or is handled correctly. ... ok
+test_mysql_success_path (test_challenger.TestDualConnectionChallenger.test_mysql_success_path)
+Verify that test_dual_connection succeeds with valid MySQL configurations. ... ok
+test_sqlite_failure_path_source (test_challenger.TestDualConnectionChallenger.test_sqlite_failure_path_source)
+Verify that test_dual_connection raises exception when source SQLite path is invalid. ... ok
+test_sqlite_failure_path_target (test_challenger.TestDualConnectionChallenger.test_sqlite_failure_path_target)
+Verify that test_dual_connection raises exception when target SQLite path is invalid. ... ok
+test_sqlite_success_path (test_challenger.TestDualConnectionChallenger.test_sqlite_success_path)
+Verify that test_dual_connection succeeds with valid SQLite configurations. ... ok
+test_gui_async_connection_testing_empty_entries (test_challenger.TestPPNAdjustmentGUIAnyConnection.test_gui_async_connection_testing_empty_entries)
+Verify that testing connections with empty database inputs triggers a proper error response. ... ok
+test_gui_async_connection_testing_failure (test_challenger.TestPPNAdjustmentGUIAnyConnection.test_gui_async_connection_testing_failure)
+Verify GUI handles connection test failure correctly (displays error and re-enables inputs). ... ok
+test_gui_async_connection_testing_success (test_challenger.TestPPNAdjustmentGUIAnyConnection.test_gui_async_connection_testing_success)
+Verify GUI locks/unlocks inputs and shows success pop-up upon successful connection test. ... ok
+test_sqlite_locked_database_write (test_challenger.TestSQLiteLockChallenger.test_sqlite_locked_database_write)
+Test how database operations handle a locked SQLite database. ... ok
+test_argparser_dual_db (test_dual_connection.TestDualConnection.test_argparser_dual_db)
+Test that the backend argparser parses dual database arguments correctly. ... ok
+test_connection_failure_source (test_dual_connection.TestDualConnection.test_connection_failure_source)
+Verify that a failure in Source DB connection raises the correct exception. ... ok
+test_connection_failure_target (test_dual_connection.TestDualConnection.test_connection_failure_target)
+Verify that a failure in Target DB connection raises the correct exception. ... ok
+test_empty_database_param_sandbox (test_dual_connection.TestDualConnection.test_empty_database_param_sandbox)
+Verify that when sandbox is True, empty/None database parameters default to sandbox.db. ... ok
+test_invalid_port_type (test_dual_connection.TestDualConnection.test_invalid_port_type)
+Verify that an invalid non-numeric port type raises a ValueError wrapped in Exception. ... ok
+test_mock_pymysql_connections (test_dual_connection.TestDualConnection.test_mock_pymysql_connections)
+Mock pymysql.connect to verify correct parameters are passed for Source and Target DBs. ... ok
+test_sqlite_locked_exception (test_dual_connection.TestDualConnection.test_sqlite_locked_exception)
+Verify that SQLite locks (OperationalError) are handled correctly and reported. ... ok
+test_10_connection_testing_failure (test_gui.TestPPNAdjustmentGUI.test_10_connection_testing_failure)
+Verifies that Test Connection button handles failures correctly. ... ok
+test_11_empty_entries_validation (test_gui.TestPPNAdjustmentGUI.test_11_empty_entries_validation)
+Verifies that empty fields trigger validation and show critical messages. ... ok
+test_1_form_components_exist (test_gui.TestPPNAdjustmentGUI.test_1_form_components_exist)
+Verifies that the GUI window initializes and contains all required form components. ... ok
+test_2_load_accounts_on_test_connection_success (test_gui.TestPPNAdjustmentGUI.test_2_load_accounts_on_test_connection_success)
+Verifies that accounts are loaded dynamically when test connection succeeds. ... ok
+test_3_state_management_multithreading_and_logging (test_gui.TestPPNAdjustmentGUI.test_3_state_management_multithreading_and_logging)
+Verifies input lock state, multithread responsiveness, real-time logging, and post-process summary. ... ok
+test_4_csv_export_operation (test_gui.TestPPNAdjustmentGUI.test_4_csv_export_operation)
+Verifies that clicking "Export" generates a CSV containing the detail of adjustments. ... ok
+test_5_stale_accounts_cleared_on_invalid_db (test_gui.TestPPNAdjustmentGUI.test_5_stale_accounts_cleared_on_invalid_db)
+Verifies that the account combo box is cleared when an invalid database is selected. ... ok
+test_6_database_casing_support (test_gui.TestPPNAdjustmentGUI.test_6_database_casing_support)
+Verifies that database paths with uppercase extensions (like .DB) are supported. ... ok
+test_7_remote_mysql_bypass (test_gui.TestPPNAdjustmentGUI.test_7_remote_mysql_bypass)
+Verifies that MySQL connections bypass the local file existence check. ... ok
+test_8_window_close_guard (test_gui.TestPPNAdjustmentGUI.test_8_window_close_guard)
+Verifies that window close is guarded while worker thread is active. ... ok
+test_9_connection_testing (test_gui.TestPPNAdjustmentGUI.test_9_connection_testing)
+Verifies that Test Connection button triggers connection testing and handles success. ... ok
+test_purge_transactions_in_range_constructs_queries_restricted_by_dates (test_idempotent_etl.TestIdempotentETL.test_purge_transactions_in_range_constructs_queries_restricted_by_dates)
+Verify that purge_transactions_in_range constructs and executes DELETE queries ... ok
+test_sync_raw_transactions_in_range_idempotency (test_idempotent_etl.TestIdempotentETL.test_sync_raw_transactions_in_range_idempotency)
+Verify that sync_raw_transactions_in_range is idempotent. ... ok
+test_worker_thread_emits_rerun_warning_signal (test_idempotent_etl.TestIdempotentETL.test_worker_thread_emits_rerun_warning_signal)
+Verify that WorkerThread emits rerun_warning_signal when target transactions ... ok
+test_1_rollback_restores_qty_and_deletes_log_accurately (test_ledger_rollback.TestLedgerRollback.test_1_rollback_restores_qty_and_deletes_log_accurately)
+Verify that rollback restores consumed quantities without decimal loss. ... ok
+test_2_rollback_deletes_new_savings_in_range (test_ledger_rollback.TestLedgerRollback.test_2_rollback_deletes_new_savings_in_range)
+Verify that rollback deletes new tabungan created during the adjustment. ... ok
+test_basic_multithreaded_addition_draw_savings (test_multithreaded_addition.TestMultithreadedAddition.test_basic_multithreaded_addition_draw_savings)
+Verify multithreaded addition with multiple workers drawing from savings. ... ok
+test_multithreaded_addition_fictional_injection (test_multithreaded_addition.TestMultithreadedAddition.test_multithreaded_addition_fictional_injection)
+Verify fictional injection with multiple workers when no savings exist. ... ok
+test_multithreaded_addition_no_items (test_multithreaded_addition.TestMultithreadedAddition.test_multithreaded_addition_no_items)
+Verify that when there are no items in range, returns target_omset_change. ... ok
+test_multithreaded_addition_zero_target (test_multithreaded_addition.TestMultithreadedAddition.test_multithreaded_addition_zero_target)
+Verify that target < 0.001 returns 0.0 early and makes no database changes. ... ok
+test_1_savings_consumed_logs_written (test_savings_consumption.TestSavingsConsumptionAndSoftDelete.test_1_savings_consumed_logs_written)
+Verify that when savings are consumed, logs are written to log_mutasi_tabungan. ... ok
+test_2_referential_integrity_risk_under_foreign_keys (test_savings_consumption.TestSavingsConsumptionAndSoftDelete.test_2_referential_integrity_risk_under_foreign_keys)
+Verify that with active foreign keys, soft deletes prevent integrity errors and the run succeeds. ... ok
+test_3_soft_deletes_compatibility_with_e2e_suite (test_savings_consumption.TestSavingsConsumptionAndSoftDelete.test_3_soft_deletes_compatibility_with_e2e_suite)
+Verify that using soft-deletes (qty=0) instead of deleting passes all E2E test cases. ... expected failure
+test_4_rollback_savings_in_range (test_savings_consumption.TestSavingsConsumptionAndSoftDelete.test_4_rollback_savings_in_range)
+Verify that rollback_savings_in_range restores consumed savings, deletes new savings, and deletes logs. ... ok
+test_5_a1_priority_rule (test_savings_consumption.TestSavingsConsumptionAndSoftDelete.test_5_a1_priority_rule)
+Verify the A1 Priority Rule for savings redirect and rollback. ... ok
+test_mysql_existence_validation (test_schema_cloning.TestDatabaseExistenceDetection.test_mysql_existence_validation)
+Verify MySQL existence check when database exists (succeeds) vs when it throws 1049. ... ok
+test_sqlite_existence_validation (test_schema_cloning.TestDatabaseExistenceDetection.test_sqlite_existence_validation)
+Verify database existence check logic when path exists vs. when it is missing. ... ok
+test_sqlite_missing_database_raises_error (test_schema_cloning.TestDatabaseExistenceDetection.test_sqlite_missing_database_raises_error)
+Verify missing SQLite databases correctly raise file-not-found exceptions in stream_sql_statements. ... ok
+test_on_clone_finished_success_restarts_process (test_schema_cloning.TestGUIPopupFlows.test_on_clone_finished_success_restarts_process)
+Verify that a successful clone displays an information dialog and restarts adjustment process. ... ok
+test_on_db_not_found_no_flow (test_schema_cloning.TestGUIPopupFlows.test_on_db_not_found_no_flow)
+Verify that choosing No in the popup unlocks GUI and aborts process. ... ok
+test_on_db_not_found_yes_flow (test_schema_cloning.TestGUIPopupFlows.test_on_db_not_found_yes_flow)
+Verify that choosing Yes in the popup spawns the CloneWorkerThread. ... ok
+test_connection_worker_failure (test_schema_cloning.TestPyQt5SignalTriggers.test_connection_worker_failure)
+Verify TestConnectionWorker emits failure signals with error details. ... ok
+test_connection_worker_success (test_schema_cloning.TestPyQt5SignalTriggers.test_connection_worker_success)
+Verify TestConnectionWorker emits success signal upon successful test connection. ... ok
+test_worker_thread_raises_db_not_found (test_schema_cloning.TestPyQt5SignalTriggers.test_worker_thread_raises_db_not_found)
+Verify WorkerThread raises DatabaseNotFoundError and emits db_not_found_signal if target DB does not exist. ... ok
+test_worker_thread_reduction_success (test_schema_cloning.TestPyQt5SignalTriggers.test_worker_thread_reduction_success)
+Verify WorkerThread reduction triggers proper progression and finish signals. ... ok
+test_make_sqlite_compatible (test_schema_cloning.TestSchemaCloningLogic.test_make_sqlite_compatible)
+Test make_sqlite_compatible strips comments and administrative tasks. ... ok
+test_make_sqlite_compatible_comments_before_set (test_schema_cloning.TestSchemaCloningLogic.test_make_sqlite_compatible_comments_before_set)
+Test that make_sqlite_compatible ignores administrative queries even with preceding comments. ... ok
+test_parse_columns_named_key_and_index (test_schema_cloning.TestSchemaCloningLogic.test_parse_columns_named_key_and_index)
+Test that columns named key or index are not incorrectly stripped as constraints. ... ok
+test_parse_composite_primary_key_with_autoincrement (test_schema_cloning.TestSchemaCloningLogic.test_parse_composite_primary_key_with_autoincrement)
+Test that composite primary keys are dropped if auto_increment is present. ... ok
+test_parse_create_table_to_sqlite_basic (test_schema_cloning.TestSchemaCloningLogic.test_parse_create_table_to_sqlite_basic)
+Test basic CREATE TABLE conversion from MySQL to SQLite syntax. ... ok
+test_parse_create_table_with_autoincrement (test_schema_cloning.TestSchemaCloningLogic.test_parse_create_table_with_autoincrement)
+Test conversion of auto_increment and primary key constraint handling. ... ok
+test_sqlite_wrappers (test_schema_cloning.TestSchemaCloningLogic.test_sqlite_wrappers)
+Test SQLiteConnectionWrapper and SQLiteCursorWrapper correctly translate execution queries. ... ok
+test_translate_query_modulo_expressions (test_schema_cloning.TestSchemaCloningLogic.test_translate_query_modulo_expressions)
+Test that %s is only replaced when it is a stand-alone placeholder, not in modulo expressions. ... ok
+test_translate_query_placeholders (test_schema_cloning.TestSchemaCloningLogic.test_translate_query_placeholders)
+Test translate_query correctly maps %s to ? while ignoring values inside quotes. ... ok
+test_clone_full_database_mysql (test_schema_cloning.TestSchemaCloningOperations.test_clone_full_database_mysql)
+Verify MySQL database cloning creates database, retrieves schemas, and copies data. ... ok
+test_clone_full_database_sqlite (test_schema_cloning.TestSchemaCloningOperations.test_clone_full_database_sqlite)
+Verify SQLite database cloning performs backup using sqlite3.Connection.backup. ... ok
+test_proses_adjustment_pajak_schema (test_schema_verification.TestSchemaVerification.test_proses_adjustment_pajak_schema)
+Verify schema definitions in proses_adjustment_pajak.py ... ok
+test_test_infra_schema (test_schema_verification.TestSchemaVerification.test_test_infra_schema)
+Verify schema definitions in test_infra.py ... ok
+test_sqlite_wal_cloning_inconsistency (test_stress_challenger.TestStressChallenger.test_sqlite_wal_cloning_inconsistency)
+Stress: Verify that cloning a WAL SQLite database with raw file copy ignores un-checkpointed WAL data. ... ok
+test_window_close_guard_bypass_during_cloning (test_stress_challenger.TestStressChallenger.test_window_close_guard_bypass_during_cloning)
+Stress: Verify that closing the window during cloning terminates the thread without warning. ... ok
+
+----------------------------------------------------------------------
+Ran 68 tests in 8.623s
+
+OK (expected failures=1)

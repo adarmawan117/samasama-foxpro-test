@@ -53,8 +53,9 @@ Sistem ini bekerja layaknya sebuah tim pencatat keuangan yang menggunakan metode
 
 ### 8. Pinjam Barang (Hutang)
 8. Jika celengan barang kosong atau tidak mencukupi untuk memenuhi kebutuhan tambah omset, sistem akan menggunakan metode pinjam barang.
-   - **a. Suntikan Fiktif:** Sistem akan memilih barang kena pajak yang harganya paling cocok untuk menutupi kekurangan target tambahan nota, lalu menambahkannya ke nota penjualan tersebut.
-   - **b. Catatan Hutang:** Karena barang tersebut tidak diambil dari celengan stok riil, sistem akan mencatat tindakan ini sebagai "Hutang Barang" (minus) di buku kasir target. Ini berarti toko kita berutang stok barang tersebut pada laporan pajak.
+   - **a. Suntikan Fiktif (Sistem Cabut Undian):** Sistem akan memilih barang kena pajak yang harganya cocok untuk menutupi kekurangan target tambahan nota, lalu menambahkannya ke nota penjualan tersebut. Pemilihan produk fiktif menggunakan **Global Exhaustion Pool** di mana seluruh produk PPN diacak, dan barang yang telah dipakai akan dibuang permanen dari putaran agar tidak muncul berulang di faktur yang sama atau berdekatan (menghindari deteksi auditor). Jika daftar habis terpakai, sistem otomatis mereset dan mengacak ulangnya.
+   - **b. Kuantitas Teracak (Random QTY):** Untuk menambah kealamian, sistem tidak akan menggunakan 1 jenis barang untuk langsung menambal target sekaligus (misal langsung beli 10 unit). Sistem akan **mengacak kuantitas** (misal 2 atau 3 unit), lalu mencari barang jenis lain lagi untuk menambal sisa kekurangannya, menciptakan variasi pembelanjaan layaknya pembeli asli.
+   - **c. Catatan Hutang:** Karena barang tersebut tidak diambil dari celengan stok riil, sistem akan mencatat tindakan ini sebagai "Hutang Barang" (minus) di buku kasir target. Ini berarti toko kita berutang stok barang tersebut pada laporan pajak.
 
 ### 9. Bayar Hutang (Self-Healing)
 9. Sistem memiliki kecerdasan untuk melunasi hutang barang secara otomatis tanpa campur tangan pengguna saat ada kesempatan pemotongan omset berikutnya.
