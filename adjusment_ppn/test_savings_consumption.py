@@ -199,7 +199,7 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         proses_penambahan_omset(
             source_conn, target_conn, acc="001", 
             start_date="2026-06-01", end_date="2026-06-30", 
-            target_ppn=10000.0
+            target_omset_change=10000.0
         )
         
         # Retrieve target connection cursor to inspect log_mutasi_tabungan
@@ -261,7 +261,7 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
             proses_penambahan_omset(
                 wrapper_src, wrapper_tgt, acc="001", 
                 start_date="2026-06-01", end_date="2026-06-30", 
-                target_ppn=10000.0
+                target_omset_change=10000.0
             )
         except sqlite3.IntegrityError as e:
             self.fail(f"Adjustment run failed with foreign key integrity error: {e}")
@@ -478,7 +478,7 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         proses_penambahan_omset(
             source_conn, target_conn, acc="001", 
             start_date="2026-06-01", end_date="2026-06-30", 
-            target_ppn=10000.0
+            target_omset_change=10000.0
         )
         
         # Verify that savings quantity was reduced to 1.0 and a log was created
@@ -578,7 +578,7 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         global_gap = proses_pengurangan_omset(
             source_conn, target_conn, acc="A3", 
             start_date="2026-06-01", end_date="2026-06-30", 
-            target_ppn=-20000.0
+            target_omset_change=-20000.0
         )
         
         # Verify that savings were recorded

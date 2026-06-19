@@ -67,10 +67,11 @@ Sistem ini bekerja layaknya sebuah tim pencatat keuangan yang menggunakan metode
     - **b. Pembagian Selisih Tambah:** Sistem akan mendistribusikan penambahan omset dari celengan atau menyuntikkan barang tambahan secara merata ke dalam 25% faktur yang ada, guna menghindari membengkaknya satu faktur penjualan menjadi nilai yang tidak logis.
 
 ### 11. Dukungan Pemrosesan Multi-Thread Cepat
-11. Menghitung ribuan transaksi dalam hitungan detik membutuhkan kekuatan komputasi yang besar. Sistem ini kini dilengkapi dukungan _multithreading_ canggih:
-    - **a. Perhitungan Otomatis Kekuatan PC:** Sistem mendeteksi jumlah core CPU (otak prosesor) komputer Anda secara otomatis, dan menggunakan hingga 70% kecepatannya agar penyesuaian PPN berjalan jauh lebih cepat.
-    - **b. Anti Komputer Nge-Hang (Lag):** Meskipun sistem menggunakan kekuatan penuh, ia akan selalu menyisakan 30% napas komputer agar Anda tetap bisa membuka aplikasi lain atau berselancar di internet tanpa kendala.
-    - **c. Antrian Penulisan Aman:** Menyimpan ribuan log data dapat berisiko bertabrakan. Oleh sebab itu, aplikasi menyediakan "Jalur Cepat Antrian Database" sehingga penyimpanan tidak pernah macet (deadlock).
+11. Menghitung ribuan transaksi dalam hitungan detik membutuhkan kekuatan komputasi yang besar. Sistem ini kini dilengkapi dukungan _multithreading_ canggih untuk proses pemotongan (pengurangan) maupun penambahan omset:
+    - **a. Perhitungan Otomatis Kekuatan PC:** Sistem mendeteksi jumlah core CPU (otak prosesor) komputer Anda secara otomatis, dan menggunakan hingga 70% kecepatannya (ThreadPoolExecutor) agar penyesuaian PPN berjalan jauh lebih cepat secara paralel.
+    - **b. Caching RAM & Preloading:** Sebelum memulai pemrosesan paralel, sistem melakukan pre-load data master barang dan data celengan (savings) langsung ke memori (RAM) komputer. Ini menghilangkan kueri database yang berulang-ulang di dalam thread sehingga performa komputasi melesat tanpa hambatan I/O.
+    - **c. Mekanisme Kunci Aman (Locking):** Demi menghindari bentrokan data (data races) saat beberapa thread mencoba mengakses celengan barang yang sama pada waktu bersamaan, sistem menerapkan mekanisme penguncian (Locking) yang sinkron dan thread-safe.
+    - **d. Antrian Penulisan Aman:** Semua eksekusi perubahan data (INSERT, UPDATE, DELETE) dikirim ke DbWriterQueue yang memproses penulisan ke database secara berurutan pada satu thread khusus. Ini mencegah database mengalami penguncian (deadlock).
 
 ### 12. Auto-Sync Master Data dan Otomasi Tabel
 12. Sebagai pengaman sebelum proses dimulai, aplikasi memproteksi integritas data dengan persiapan otomatis:

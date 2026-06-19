@@ -89,10 +89,16 @@ def upsert_tabungan_dan_hutang_async(db_queue, savings_cache, savings_lock, acc,
         if records:
             record = records[0]
             record['qty'] += qty
-            db_queue.push(
-                "UPDATE tabungan_dan_hutang SET qty = qty + %s WHERE urutan = %s",
-                (qty, record['urutan'])
-            )
+            if record['urutan'] == -1:
+                db_queue.push(
+                    "UPDATE tabungan_dan_hutang SET qty = qty + %s WHERE acc = %s AND kode_brg = %s AND tipe = %s",
+                    (qty, acc, kode_brg, tipe)
+                )
+            else:
+                db_queue.push(
+                    "UPDATE tabungan_dan_hutang SET qty = qty + %s WHERE urutan = %s",
+                    (qty, record['urutan'])
+                )
         else:
             db_queue.push(
                 "INSERT INTO tabungan_dan_hutang (acc, kode_brg, qty, tipe, tanggal_dibuat) VALUES (%s, %s, %s, %s, %s)",
@@ -108,14 +114,16 @@ def settle_debt_with_savings_async(db_queue, savings_cache, savings_lock, a1_pro
     effective_acc_tuple = ('A1',) if is_a1 else acc_tuple
     effective_item_acc = 'A1' if is_a1 else item_acc
 
-    tambah_records = []
+    remaining_debt = 0
+    upsert_needed = False
+    
     with savings_lock:
+        tambah_records = []
         for acc in effective_acc_tuple:
             key = (acc, kode_brg, 'tambah')
             tambah_records.extend(savings_cache.get(key, []))
             
-    if tambah_records:
-        tambah_record = next((r for r in tambah_records if r['qty'] > 0), None)
+        tambah_record = next((r for r in tambah_records if r['qty'] > 0), None) if tambah_records else None
         if tambah_record:
             tambah_urutan = tambah_record['urutan']
             tambah_qty = tambah_record['qty']
@@ -126,12 +134,11 @@ def settle_debt_with_savings_async(db_queue, savings_cache, savings_lock, a1_pro
                     (tambah_urutan, tambah_qty, tanggal_dibuat)
                 )
                 db_queue.push("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (tambah_urutan,))
-                with savings_lock:
-                    tambah_record['qty'] = 0.0
+                tambah_record['qty'] = 0.0
                 
                 remaining_debt = best_k - tambah_qty
                 if remaining_debt > 0:
-                    upsert_tabungan_dan_hutang_async(db_queue, savings_cache, savings_lock, effective_item_acc, kode_brg, remaining_debt, 'kurang', tanggal_dibuat=tanggal_dibuat)
+                    upsert_needed = True
             else:
                 db_queue.push(
                     "INSERT INTO log_mutasi_tabungan (id_tabungan, qty_dipakai, tanggal_dipakai) VALUES (%s, %s, %s)",
@@ -141,11 +148,13 @@ def settle_debt_with_savings_async(db_queue, savings_cache, savings_lock, a1_pro
                     "UPDATE tabungan_dan_hutang SET qty = qty - %s WHERE urutan = %s",
                     (best_k, tambah_urutan)
                 )
-                with savings_lock:
-                    tambah_record['qty'] -= best_k
-            return
-
-    upsert_tabungan_dan_hutang_async(db_queue, savings_cache, savings_lock, effective_item_acc, kode_brg, best_k, 'kurang', tanggal_dibuat=tanggal_dibuat)
+                tambah_record['qty'] -= best_k
+        else:
+            remaining_debt = best_k
+            upsert_needed = True
+            
+    if upsert_needed:
+        upsert_tabungan_dan_hutang_async(db_queue, savings_cache, savings_lock, effective_item_acc, kode_brg, remaining_debt, 'kurang', tanggal_dibuat=tanggal_dibuat)
 
 
 def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date, target_omset_change, max_workers=1, log_callback=None):
@@ -346,9 +355,23 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
     source_cursor = source_conn.cursor()
     target_cursor = target_conn.cursor()
     
-    # Get all items in djual (including non-PPN)
+    # 1. Preload barang master data
+    source_cursor.execute("SELECT ACC, KODE_BRG, HARGA11, HRG_BELI, PAJAK FROM barang")
+    barang_cache = {}
+    a1_products = set()
+    for row in source_cursor.fetchall():
+        b_acc, b_kode, b_harga, b_beli, b_pajak = row
+        barang_cache[(b_acc, b_kode)] = {
+            'harga11': float(b_harga) if b_harga is not None else 0.0,
+            'hrg_beli': float(b_beli) if b_beli is not None else 0.0,
+            'pajak': int(b_pajak) if b_pajak is not None else 0
+        }
+        if b_acc == 'A1':
+            a1_products.add(b_kode)
+            
+    # 2. Query djual from source_conn with all fields
     source_cursor.execute(f"""
-        SELECT TGL_JUAL, F_JUAL, KODE_BRG, JUMLAH, HRG_JUAL, URUTAN, ACC
+        SELECT TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN, URUTAN
         FROM djual
         WHERE ACC IN ({placeholders}) AND TGL_JUAL >= %s AND TGL_JUAL <= %s
         ORDER BY TGL_JUAL ASC, F_JUAL ASC, URUTAN ASC
@@ -357,22 +380,45 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
     
     if not all_items:
         if log_callback and callable(log_callback):
-            log_callback(f"Action: End Addition Early | Reason: No items to add. Remaining Gap: {target_ppn}")
-        return float(target_ppn) if target_ppn is not None else 0.0
+            log_callback(f"Action: End Addition Early | Reason: No items to add. Remaining Gap: {target_omset_change}")
+        return float(target_omset_change) if target_omset_change is not None else 0.0
+        
+    # 3. Group the query on djual by F_JUAL
+    receipt_items = defaultdict(list)
+    for row in all_items:
+        tgl_jual, f_jual, item_acc, kode_brg, jumlah, hrg_beli, hrg_jual, disc1, disc2, disc3, disc_rp, f_ppn, urutan = row
+        receipt_items[f_jual].append({
+            'tgl_jual': tgl_jual,
+            'f_jual': f_jual,
+            'acc': item_acc,
+            'kode_brg': kode_brg,
+            'jumlah': float(jumlah) if jumlah is not None else 0.0,
+            'hrg_beli': float(hrg_beli) if hrg_beli is not None else 0.0,
+            'hrg_jual': float(hrg_jual) if hrg_jual is not None else 0.0,
+            'disc1': float(disc1) if disc1 is not None else 0.0,
+            'disc2': float(disc2) if disc2 is not None else 0.0,
+            'disc3': float(disc3) if disc3 is not None else 0.0,
+            'disc_rp': float(disc_rp) if disc_rp is not None else 0.0,
+            'f_ppn': float(f_ppn) if f_ppn is not None else 0.0,
+            'urutan': urutan
+        })
         
     receipt_totals = defaultdict(float)
     receipt_keys = []
     seen_receipts = set()
     total_omset = 0.0
     for row in all_items:
-        tgl_jual, f_jual, kode_brg, jumlah, hrg_jual, urutan, item_acc = row
+        tgl_jual, f_jual, item_acc = row[0], row[1], row[2]
         r_key = f_jual
-        receipt_totals[r_key] += jumlah * hrg_jual
-        total_omset += jumlah * hrg_jual
         if r_key not in seen_receipts:
             seen_receipts.add(r_key)
             receipt_keys.append((tgl_jual, f_jual, item_acc))
             
+    for f_jual, items in receipt_items.items():
+        r_total = sum(item['jumlah'] * item['hrg_jual'] for item in items)
+        receipt_totals[f_jual] = r_total
+        total_omset += r_total
+        
     if total_omset < 0.001:
         P = 1.0
     else:
@@ -381,147 +427,164 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
     total_actual_addition = 0.0
     total_receipts = len(receipt_keys)
     
-    for index, (tgl_jual, f_jual, item_acc) in enumerate(receipt_keys, start=1):
-        r_key = f_jual
-        receipt_target = receipt_totals[r_key] * P
+    # Preload savings_cache
+    placeholders_preload = ", ".join(["%s"] * (len(acc_tuple) + 1))
+    target_cursor.execute(f"""
+        SELECT urutan, qty, acc, kode_brg, tipe 
+        FROM tabungan_dan_hutang 
+        WHERE acc IN ({placeholders_preload}) AND qty > 0.0
+    """, (*acc_tuple, 'A1'))
+    
+    savings_cache = {}
+    for row in target_cursor.fetchall():
+        urutan, qty, row_acc, kode_brg, tipe = row
+        key = (row_acc, kode_brg, tipe)
+        if key not in savings_cache:
+            savings_cache[key] = []
+        savings_cache[key].append({'urutan': urutan, 'qty': float(qty)})
         
-        while receipt_target > 0.001:
-            # Draw from savings ('tambah')
-            target_cursor.execute(
-                f"SELECT urutan, kode_brg, qty, acc FROM tabungan_dan_hutang WHERE (acc IN ({placeholders}) OR acc = 'A1') AND tipe = 'tambah' AND qty > 0.0",
-                (*acc_tuple,)
-            )
-            savings = target_cursor.fetchall()
+    savings_lock = threading.Lock()
+    total_actual_addition_lock = threading.Lock()
+    
+    log_batcher = LogBatcher(log_callback, batch_size=20)
+    db_queue = DbWriterQueue(target_conn)
+    
+    def worker_task(index, tgl_jual, f_jual, item_acc):
+        nonlocal total_actual_addition
+        receipt_target = receipt_totals[f_jual] * P
+        
+        local_receipt_items = {}
+        for item in receipt_items[f_jual]:
+            local_receipt_items[item['kode_brg']] = {
+                'urutan': item['urutan'],
+                'jumlah': item['jumlah'],
+                'hrg_beli': item['hrg_beli'],
+                'hrg_jual': item['hrg_jual']
+            }
             
-            valid_savings = []
-            for s_row in savings:
-                s_urutan, s_kode, s_qty, s_acc = s_row
-                if abs(s_qty) < 0.001:
-                    target_cursor.execute("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (s_urutan,))
-                    continue
-
-                # Check A1 Priority Rule
-                source_cursor.execute("SELECT 1 FROM barang WHERE ACC = 'A1' AND KODE_BRG = %s", (s_kode,))
-                is_a1_product = source_cursor.fetchone() is not None
-                if is_a1_product:
-                    if s_acc != 'A1':
-                        continue
-                else:
-                    if s_acc not in acc_tuple:
-                        continue
-
-                source_cursor.execute(
-                    "SELECT HARGA11, HRG_BELI, PAJAK FROM barang WHERE ACC = %s AND KODE_BRG = %s",
-                    (s_acc, s_kode)
-                )
-                b_row = source_cursor.fetchone()
-                if b_row and b_row[2] == 1:
-                    valid_savings.append({
-                        'urutan': s_urutan,
-                        'kode_brg': s_kode,
-                        'qty': abs(s_qty),
-                        'price': b_row[0],
-                        'hrg_beli': b_row[1],
-                        's_acc': s_acc
-                    })
+        while receipt_target > 0.001:
+            # Draw from savings ('tambah') using savings_cache
+            selected_saving = None
+            qty_to_draw = 0
+            
+            with savings_lock:
+                valid_savings = []
+                for (s_acc, s_kode, s_tipe), records in savings_cache.items():
+                    if s_tipe == 'tambah' and (s_acc in acc_tuple or s_acc == 'A1'):
+                        for r in records:
+                            s_qty = r['qty']
+                            if s_qty > 0.001:
+                                # Check A1 Priority Rule
+                                is_a1_product = s_kode in a1_products
+                                if is_a1_product:
+                                    if s_acc != 'A1':
+                                        continue
+                                else:
+                                    if s_acc not in acc_tuple:
+                                        continue
+                                
+                                b_info = barang_cache.get((s_acc, s_kode))
+                                if b_info and b_info['pajak'] == 1:
+                                    valid_savings.append({
+                                        'urutan': r['urutan'],
+                                        'kode_brg': s_kode,
+                                        'qty': s_qty,
+                                        'price': b_info['harga11'],
+                                        'hrg_beli': b_info['hrg_beli'],
+                                        's_acc': s_acc,
+                                        'record': r
+                                    })
+                                    
+                if valid_savings:
+                    valid_savings.sort(key=lambda x: (-x['price'], x['kode_brg']))
                     
-            if valid_savings:
-                valid_savings.sort(key=lambda x: (-x['price'], x['kode_brg']))
-                selected_saving = None
-                qty_to_draw = 0
-                
-                # Priority A: exact match
-                for vs in valid_savings:
-                    if abs(vs['price'] * vs['qty'] - receipt_target) < 0.001:
-                        selected_saving = vs
-                        qty_to_draw = vs['qty']
-                        break
-                        
-                # Priority B: exact match with multiple
-                if not selected_saving:
+                    # Priority A: exact match
                     for vs in valid_savings:
-                        k = round(receipt_target / vs['price'])
-                        if 1 <= k <= vs['qty'] and abs(vs['price'] * k - receipt_target) < 0.001:
+                        if abs(vs['price'] * vs['qty'] - receipt_target) < 0.001:
                             selected_saving = vs
-                            qty_to_draw = k
+                            qty_to_draw = vs['qty']
                             break
                             
-                # Priority C: closest below target
-                if not selected_saving:
-                    best_val = 0.0
-                    for vs in valid_savings:
-                        k = int(receipt_target // vs['price'])
-                        if k > vs['qty']:
-                            k = vs['qty']
-                        if 1 <= k <= vs['qty']:
-                            val = vs['price'] * k
-                            if val > best_val:
-                                best_val = val
+                    # Priority B: exact match with multiple
+                    if not selected_saving:
+                        for vs in valid_savings:
+                            k = round(receipt_target / vs['price'])
+                            if 1 <= k <= vs['qty'] and abs(vs['price'] * k - receipt_target) < 0.001:
                                 selected_saving = vs
                                 qty_to_draw = k
+                                break
                                 
-                if selected_saving:
-                    vs = selected_saving
-                    new_qty = vs['qty'] - qty_to_draw
-                    target_cursor.execute(
-                        "INSERT INTO log_mutasi_tabungan (id_tabungan, qty_dipakai, tanggal_dipakai) VALUES (%s, %s, %s)",
-                        (vs['urutan'], qty_to_draw, tgl_jual)
-                    )
-                    if new_qty <= 0:
-                        target_cursor.execute("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (vs['urutan'],))
-                    else:
-                        target_cursor.execute(
-                            "UPDATE tabungan_dan_hutang SET qty = %s WHERE urutan = %s",
-                            (new_qty, vs['urutan'])
-                        )
+                    # Priority C: closest below target
+                    if not selected_saving:
+                        best_val = 0.0
+                        for vs in valid_savings:
+                            k = int(receipt_target // vs['price'])
+                            if k > vs['qty']:
+                                k = vs['qty']
+                            if 1 <= k <= vs['qty']:
+                                val = vs['price'] * k
+                                if val > best_val:
+                                    best_val = val
+                                    selected_saving = vs
+                                    qty_to_draw = k
+                                    
+                    if selected_saving:
+                        selected_saving['record']['qty'] -= qty_to_draw
                         
-                    target_cursor.execute(
-                        "SELECT urutan FROM djual WHERE ACC = %s AND TGL_JUAL = %s AND F_JUAL = %s AND KODE_BRG = %s",
-                        (item_acc, tgl_jual, f_jual, vs['kode_brg'])
+            if selected_saving:
+                vs = selected_saving
+                new_qty = vs['qty'] - qty_to_draw
+                
+                db_queue.push(
+                    "INSERT INTO log_mutasi_tabungan (id_tabungan, qty_dipakai, tanggal_dipakai) VALUES (%s, %s, %s)",
+                    (vs['urutan'], qty_to_draw, tgl_jual)
+                )
+                if new_qty <= 0:
+                    db_queue.push("UPDATE tabungan_dan_hutang SET qty = 0.0 WHERE urutan = %s", (vs['urutan'],))
+                else:
+                    db_queue.push(
+                        "UPDATE tabungan_dan_hutang SET qty = %s WHERE urutan = %s",
+                        (new_qty, vs['urutan'])
                     )
-                    existing_row = target_cursor.fetchone()
-                    if existing_row:
-                        target_cursor.execute(
-                            "UPDATE djual SET jumlah = jumlah + %s WHERE urutan = %s",
-                            (qty_to_draw, existing_row[0])
-                        )
-                    else:
-                        target_cursor.execute(
-                            "INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN) "
-                            "VALUES (%s, %s, %s, %s, %s, %s, %s, 0.0, 0.0, 0.0, 0.0, 10.0)",
-                            (tgl_jual, f_jual, item_acc, vs['kode_brg'], qty_to_draw, vs['hrg_beli'], vs['price'])
-                        )
-                        
-                    val_added = qty_to_draw * vs['price']
-                    receipt_target -= val_added
-                    total_actual_addition += val_added
-
-                    if log_callback and callable(log_callback):
-                        remaining_gap = target_val - total_actual_addition
-                        log_callback(f"[{item_acc}] Action: Draw Savings [{index}/{total_receipts}] | Receipt: {f_jual} | Product: {vs['kode_brg']} | Qty Added: {qty_to_draw} | Value: {val_added} | Remaining Gap: {remaining_gap}")
-                    continue
                     
+                p_code = vs['kode_brg']
+                if p_code in local_receipt_items:
+                    local_receipt_items[p_code]['jumlah'] += qty_to_draw
+                    local_receipt_items[p_code]['modified'] = True
+                else:
+                    local_receipt_items[p_code] = {
+                        'urutan': None,
+                        'jumlah': qty_to_draw,
+                        'hrg_beli': vs['hrg_beli'],
+                        'hrg_jual': vs['price'],
+                        'inserted': True
+                    }
+                    
+                val_added = qty_to_draw * vs['price']
+                receipt_target -= val_added
+                
+                with total_actual_addition_lock:
+                    total_actual_addition += val_added
+                    current_total = total_actual_addition
+                    
+                remaining_gap = target_val - current_total
+                log_batcher.add_log(f"[{item_acc}] Action: Draw Savings [{index}/{total_receipts}] | Receipt: {f_jual} | Product: {vs['kode_brg']} | Qty Added: {qty_to_draw} | Value: {val_added} | Remaining Gap: {remaining_gap}")
+                continue
+                
             # Fictional injection
-            source_cursor.execute(
-                "SELECT b.KODE_BRG, b.HARGA11, b.HRG_BELI "
-                "FROM barang b "
-                "WHERE b.ACC = %s AND b.PAJAK = 1 "
-                "UNION "
-                "SELECT d.KODE_BRG, d.HRG_JUAL, d.HRG_BELI "
-                "FROM djual d "
-                "WHERE d.ACC = %s AND d.F_JUAL = %s AND d.F_PPN > 0",
-                (item_acc, item_acc, f_jual)
-            )
-            all_ppn_products = list(source_cursor.fetchall())
+            union_set = set()
+            for (b_acc, b_kode), b_info in barang_cache.items():
+                if b_acc == item_acc and b_info['pajak'] == 1:
+                    union_set.add((b_kode, b_info['harga11'], b_info['hrg_beli']))
+            for item in receipt_items.get(f_jual, []):
+                if item['acc'] == item_acc and item['f_ppn'] > 0:
+                    union_set.add((item['kode_brg'], item['hrg_jual'], item['hrg_beli']))
+                    
+            all_ppn_products = list(union_set)
             if not all_ppn_products:
                 break
                 
-            all_ppn_products.sort(key=lambda x: x[0]) # Tie breaker
-                
-            target_cursor.execute(
-                "SELECT DISTINCT KODE_BRG FROM djual WHERE ACC = %s AND TGL_JUAL = %s AND F_JUAL = %s",
-                (item_acc, tgl_jual, f_jual)
-            )
+            all_ppn_products.sort(key=lambda x: x[0])
             
             best_product = None
             best_k = 0
@@ -546,7 +609,7 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                         is_better = True
                     elif p_code == 'BRG002' and best_product['kode_brg'] not in ('BRG001', 'BRG002'):
                         is_better = True
-                            
+                        
                 if is_better:
                     min_diff = diff
                     best_product = {
@@ -558,36 +621,56 @@ def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date,
                     
             if best_product:
                 p_code = best_product['kode_brg']
-                target_cursor.execute(
-                    "SELECT urutan FROM djual WHERE ACC = %s AND TGL_JUAL = %s AND F_JUAL = %s AND KODE_BRG = %s",
-                    (item_acc, tgl_jual, f_jual, p_code)
-                )
-                existing_row = target_cursor.fetchone()
-                if existing_row:
-                    target_cursor.execute(
-                        "UPDATE djual SET jumlah = jumlah + %s WHERE urutan = %s",
-                        (best_k, existing_row[0])
-                    )
+                if p_code in local_receipt_items:
+                    local_receipt_items[p_code]['jumlah'] += best_k
+                    local_receipt_items[p_code]['modified'] = True
                 else:
-                    target_cursor.execute(
-                        "INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s, 0.0, 0.0, 0.0, 0.0, 10.0)",
-                        (tgl_jual, f_jual, item_acc, p_code, best_k, best_product['hrg_beli'], best_product['price'])
-                    )
+                    local_receipt_items[p_code] = {
+                        'urutan': None,
+                        'jumlah': best_k,
+                        'hrg_beli': best_product['hrg_beli'],
+                        'hrg_jual': best_product['price'],
+                        'inserted': True
+                    }
                     
-                settle_debt_with_savings(target_cursor, acc_tuple, item_acc, p_code, best_k, tanggal_dibuat=tgl_jual)
+                settle_debt_with_savings_async(
+                    db_queue, savings_cache, savings_lock, a1_products, 
+                    acc_tuple, item_acc, p_code, best_k, tanggal_dibuat=tgl_jual
+                )
                 
                 val_injected = best_k * best_product['price']
                 receipt_target -= val_injected
-                total_actual_addition += val_injected
-
-                if log_callback and callable(log_callback):
-                    remaining_gap = target_val - total_actual_addition
-                    log_callback(f"[{item_acc}] Action: Fictional Injection [{index}/{total_receipts}] | Receipt: {f_jual} | Product: {best_product['kode_brg']} | Qty Injected: {best_k} | Value: {val_injected} | Remaining Gap: {remaining_gap}")
+                
+                with total_actual_addition_lock:
+                    total_actual_addition += val_injected
+                    current_total = total_actual_addition
+                    
+                remaining_gap = target_val - current_total
+                log_batcher.add_log(f"[{item_acc}] Action: Fictional Injection [{index}/{total_receipts}] | Receipt: {f_jual} | Product: {p_code} | Qty Injected: {best_k} | Value: {val_injected} | Remaining Gap: {remaining_gap}")
             else:
                 break
                 
-    global_gap = (float(target_ppn) if target_ppn is not None else 0.0) - total_actual_addition
+        for p_code, loc_item in local_receipt_items.items():
+            if loc_item.get('modified'):
+                db_queue.push(
+                    "UPDATE djual SET jumlah = %s WHERE urutan = %s",
+                    (loc_item['jumlah'], loc_item['urutan'])
+                )
+            elif loc_item.get('inserted'):
+                db_queue.push(
+                    "INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, 0.0, 0.0, 0.0, 0.0, 10.0)",
+                    (tgl_jual, f_jual, item_acc, p_code, loc_item['jumlah'], loc_item['hrg_beli'], loc_item['hrg_jual'])
+                )
+                
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for index, (tgl_jual, f_jual, item_acc) in enumerate(receipt_keys, start=1):
+            executor.submit(worker_task, index, tgl_jual, f_jual, item_acc)
+            
+    db_queue.stop_and_wait()
+    log_batcher.flush()
+    
+    global_gap = float(target_omset_change) - total_actual_addition
     if log_callback and callable(log_callback):
         log_callback(f"Action: End Addition | Total Added: {total_actual_addition} | Final Gap: {global_gap}")
     return global_gap

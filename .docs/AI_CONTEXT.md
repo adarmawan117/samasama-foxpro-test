@@ -229,33 +229,43 @@ MySQL and SQLite drivers must handle high-volume write operations carefully in a
 
 ### 6.3 UI Log Batching (`LogBatcher`)
 Emitting thousands of PyQt5 signals per second from worker threads causes severe UI congestion and unresponsiveness. The `LogBatcher` intercepts log strings and groups them into batches (default size 20). Only when a batch is full (or when the process flushes at the end) does the worker emit the concatenated string via `progress_signal`, maintaining a smooth GUI experience.
-- Evaluates PPN-taxable products to find the item and quantity $k$ that minimizes the difference between $\text{price} \times k$ and the remaining target amount.
-- **Tie Breaker**: If multiple products yield the same minimum difference, the system breaks the tie using alphabetical sorting of product codes (`BRG001` > `BRG002` > others).
-- Inserts or updates the transaction in `djual`.
-- Records the injected quantity as a debt entry (`kurang`) in `tabungan_dan_hutang` using `settle_debt_with_savings`.
 
-### 5.4 Scenario 4: Self-Healing & Global Gap Distribution
+### 6.4 Multithreading Addition Architecture (Caching and Locking)
+The addition process (`proses_penambahan_omset`) has been refactored from a sequential database-bound loop into a highly optimized multithreaded architecture:
+1. **RAM Caching & Pre-loading**: 
+   - At the function start, the entire `barang` master data is queried from `source_conn` and cached in a RAM dictionary `barang_dict` and set `a1_products`.
+   - Active savings records are queried from `target_conn` and cached in `savings_cache` in RAM.
+   - Sales items (`djual`) are queried and grouped by `F_JUAL` (receipts) in RAM.
+   - Worker threads process their assigned receipts using these in-memory structures, executing **zero SELECT queries inside the thread loop**.
+2. **Synchronization & Locks**:
+   - `savings_lock = threading.Lock()` guards all concurrent reads and updates on the shared `savings_cache` in RAM, preventing data races when threads draw savings or perform self-healing debt settlement.
+   - `total_actual_addition_lock` synchronizes the accumulation of the total adjusted value.
+3. **Local Transaction Representation**:
+   - Each thread maintains a local, isolated representation of target database tables (such as `djual` and `tabungan_dan_hutang` records) during the loop. The final aggregated INSERT/UPDATE queries are generated and pushed to the `DbWriterQueue` only after receipt processing terminates.
+
+### 6.5 Self-Healing & Global Gap Distribution
 After proportional adjustments, minor rounding differences (global gaps) are resolved:
 - **Negative Gap (Remaining Reduction)**: Shuffles invoice records randomly. In each, it reduces quantities of high-price items and records the reduction as savings (`tambah`).
 - **Positive Gap (Remaining Addition)**: Chooses an invoice at random. It first attempts to consume any remaining savings from `tabungan_dan_hutang` (Scenario 2). If a gap still remains, it injects fictional quantities of the best-fitting product and records it as debt (`kurang`) (Scenario 3).
 
-### 5.5 Scenario 5: Multi-Account Cross-Pollination (Select All)
+### 6.6 Multi-Account Cross-Pollination (Select All)
 The system supports executing multiple accounts in a single tuple (e.g., `acc=('A1', 'A3')`). When processed in this "ALL" batch:
 - **Proportional Targeting**: A single global PPN target is entered and proportionally distributed across all participating accounts based on their combined total omset.
 - **Shared Ledger (Cross-Pollination)**: The core module allows cross-pollination of savings. Leftover item deductions (savings or `tambah`) from one account's receipt (e.g., A1) can be used to fulfill the PPN addition targets of another account's receipt (e.g., A3) automatically.
 
-### 5.6 A1 Priority Rule for Savings
+### 6.7 A1 Priority Rule for Savings
 - **Priority Definition**: When recording or drawing savings (deposits, debts, or fictional injections), the system checks the master `barang` table for the product code (`KODE_BRG`).
 - **Overriding Behavior**: If the product code exists under account `A1` in the master table, the savings mutation is recorded under `ACC = 'A1'`, regardless of whether the sales transaction originates from another account (e.g., grosir `A3`). If the product is not registered under `A1`, the system falls back to using the transaction's original account (e.g., `A3`).
 - **Rollback Consistency**: When a rollback is performed for a target account (e.g., `A3`), the rollback engine queries the master `barang` table to identify any product codes redirected to `A1`. It then cleans up both the original target account records and the redirected `A1` savings records and mutation logs associated with those products.
 
 ---
 
-## 6. Automated Testing Structure
+## 7. Automated Testing Structure
 
-The system includes a comprehensive suite of 63 automated tests.
+The system includes a comprehensive suite of 67 automated tests.
 
-### 6.1 Test Suites and Scope
+### 7.1 Test Suites and Scope
+- `test_multithreaded_addition.py`: Verifies multithreaded addition execution, RAM-based caching, locking mechanisms, fictional injections, and boundary/early exit conditions.
 - `test_gui.py`: Verifies PyQt5 UI rendering, widget interaction, state controls (locking inputs during operations), and CSV log exports.
 - `test_schema_cloning.py`: Validates MySQL-to-SQLite DDL syntax translations, auto-increment mappings, and target database existence checks.
 - `test_idempotent_etl.py`: Verifies that rerun processes trigger warnings and that transactions within a date range are purged and re-synchronized correctly.
@@ -264,7 +274,7 @@ The system includes a comprehensive suite of 63 automated tests.
 - `test_stress_challenger.py`: Simulates writes during active SQLite Write-Ahead Logging (WAL) checkpoints.
 - `test_challenger.py` & `test_dual_connection.py`: Validates configuration parser fallbacks and connection error pathways.
 
-### 6.2 Test Runner Configuration (`run_tests_via_python.py`)
+### 7.2 Test Runner Configuration (`run_tests_via_python.py`)
 - **Headless Mode**: Sets the Qt QPA platform to offscreen to prevent opening physical windows:
   ```python
   os.environ["QT_QPA_PLATFORM"] = "offscreen"
