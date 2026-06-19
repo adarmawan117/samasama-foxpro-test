@@ -67,15 +67,15 @@ Verify that rollback restores consumed quantities without decimal loss. ... ok
 test_2_rollback_deletes_new_savings_in_range (test_ledger_rollback.TestLedgerRollback.test_2_rollback_deletes_new_savings_in_range)
 Verify that rollback deletes new tabungan created during the adjustment. ... ok
 test_1_savings_consumed_logs_written (test_savings_consumption.TestSavingsConsumptionAndSoftDelete.test_1_savings_consumed_logs_written)
-Verify that when savings are consumed, logs are written to log_mutasi_tabungan. ... ok
+Verify that when savings are consumed, logs are written to log_mutasi_tabungan. ... ERROR
 test_2_referential_integrity_risk_under_foreign_keys (test_savings_consumption.TestSavingsConsumptionAndSoftDelete.test_2_referential_integrity_risk_under_foreign_keys)
-Verify that with active foreign keys, soft deletes prevent integrity errors and the run succeeds. ... ok
+Verify that with active foreign keys, soft deletes prevent integrity errors and the run succeeds. ... ERROR
 test_3_soft_deletes_compatibility_with_e2e_suite (test_savings_consumption.TestSavingsConsumptionAndSoftDelete.test_3_soft_deletes_compatibility_with_e2e_suite)
 Verify that using soft-deletes (qty=0) instead of deleting passes all E2E test cases. ... expected failure
 test_4_rollback_savings_in_range (test_savings_consumption.TestSavingsConsumptionAndSoftDelete.test_4_rollback_savings_in_range)
-Verify that rollback_savings_in_range restores consumed savings, deletes new savings, and deletes logs. ... ok
+Verify that rollback_savings_in_range restores consumed savings, deletes new savings, and deletes logs. ... ERROR
 test_5_a1_priority_rule (test_savings_consumption.TestSavingsConsumptionAndSoftDelete.test_5_a1_priority_rule)
-Verify the A1 Priority Rule for savings redirect and rollback. ... ok
+Verify the A1 Priority Rule for savings redirect and rollback. ... ERROR
 test_mysql_existence_validation (test_schema_cloning.TestDatabaseExistenceDetection.test_mysql_existence_validation)
 Verify MySQL existence check when database exists (succeeds) vs when it throws 1049. ... ok
 test_sqlite_existence_validation (test_schema_cloning.TestDatabaseExistenceDetection.test_sqlite_existence_validation)
@@ -127,7 +127,44 @@ Stress: Verify that cloning a WAL SQLite database with raw file copy ignores un-
 test_window_close_guard_bypass_during_cloning (test_stress_challenger.TestStressChallenger.test_window_close_guard_bypass_during_cloning)
 Stress: Verify that closing the window during cloning terminates the thread without warning. ... ok
 
+======================================================================
+ERROR: test_1_savings_consumed_logs_written (test_savings_consumption.TestSavingsConsumptionAndSoftDelete.test_1_savings_consumed_logs_written)
+Verify that when savings are consumed, logs are written to log_mutasi_tabungan.
 ----------------------------------------------------------------------
-Ran 64 tests in 4.328s
+Traceback (most recent call last):
+  File "C:\Users\adarmawan117\Downloads\UndfxffAllW\RESULTS\python_test\adjusment_ppn\test_savings_consumption.py", line 199, in test_1_savings_consumed_logs_written
+    proses_penambahan_omset(
+TypeError: proses_penambahan_omset() got an unexpected keyword argument 'target_ppn'
 
-OK (expected failures=1)
+======================================================================
+ERROR: test_2_referential_integrity_risk_under_foreign_keys (test_savings_consumption.TestSavingsConsumptionAndSoftDelete.test_2_referential_integrity_risk_under_foreign_keys)
+Verify that with active foreign keys, soft deletes prevent integrity errors and the run succeeds.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\adarmawan117\Downloads\UndfxffAllW\RESULTS\python_test\adjusment_ppn\test_savings_consumption.py", line 261, in test_2_referential_integrity_risk_under_foreign_keys
+    proses_penambahan_omset(
+TypeError: proses_penambahan_omset() got an unexpected keyword argument 'target_ppn'
+
+======================================================================
+ERROR: test_4_rollback_savings_in_range (test_savings_consumption.TestSavingsConsumptionAndSoftDelete.test_4_rollback_savings_in_range)
+Verify that rollback_savings_in_range restores consumed savings, deletes new savings, and deletes logs.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\adarmawan117\Downloads\UndfxffAllW\RESULTS\python_test\adjusment_ppn\test_savings_consumption.py", line 478, in test_4_rollback_savings_in_range
+    proses_penambahan_omset(
+TypeError: proses_penambahan_omset() got an unexpected keyword argument 'target_ppn'
+
+======================================================================
+ERROR: test_5_a1_priority_rule (test_savings_consumption.TestSavingsConsumptionAndSoftDelete.test_5_a1_priority_rule)
+Verify the A1 Priority Rule for savings redirect and rollback.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\adarmawan117\Downloads\UndfxffAllW\RESULTS\python_test\adjusment_ppn\test_savings_consumption.py", line 578, in test_5_a1_priority_rule
+    global_gap = proses_pengurangan_omset(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: proses_pengurangan_omset() got an unexpected keyword argument 'target_ppn'
+
+----------------------------------------------------------------------
+Ran 64 tests in 4.326s
+
+FAILED (errors=4, expected failures=1)

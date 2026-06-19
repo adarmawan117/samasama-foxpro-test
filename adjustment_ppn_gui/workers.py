@@ -143,17 +143,62 @@ class WorkerThread(QThread):
                 self.progress_signal.emit(msg)
 
             target_val = self.target_ppn
+            
+            # Calculate current PPN
+            cursor_src = source_conn.cursor()
+            acc_tuple = self.acc if isinstance(self.acc, (list, tuple)) else (self.acc,)
+            placeholders = ", ".join(["?"] * len(acc_tuple)) if is_sandbox else ", ".join(["%s"] * len(acc_tuple))
+            
+            djual_ppn_query = f"""
+                SELECT SUM(d.JUMLAH * d.HRG_JUAL * d.F_PPN / 100)
+                FROM djual d
+                JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
+                WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if is_sandbox else '%s'} AND d.TGL_JUAL <= {'?' if is_sandbox else '%s'} AND b.PAJAK = 1
+            """
+            cursor_src.execute(djual_ppn_query, (*acc_tuple, self.start_date, self.end_date))
+            djual_row = cursor_src.fetchone()
+            try:
+                djual_ppn = float(djual_row[0]) if djual_row and djual_row[0] is not None else 0.0
+            except Exception:
+                djual_ppn = 0.0
+
+            try:
+                drjual_ppn_query = f"""
+                    SELECT SUM(d.JUMLAH * d.HRG_JUAL * d.F_PPN / 100)
+                    FROM drjual d
+                    JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
+                    WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if is_sandbox else '%s'} AND d.TGL_JUAL <= {'?' if is_sandbox else '%s'} AND b.PAJAK = 1
+                """
+                cursor_src.execute(drjual_ppn_query, (*acc_tuple, self.start_date, self.end_date))
+                drjual_row = cursor_src.fetchone()
+                drjual_ppn = float(drjual_row[0]) if drjual_row and drjual_row[0] is not None else 0.0
+            except Exception:
+                drjual_ppn = 0.0
+
+            current_ppn = djual_ppn - drjual_ppn
+            try:
+                target_val_float = float(target_val)
+            except Exception:
+                target_val_float = 0.0
+                
+            gap_ppn = target_val_float - current_ppn
+            # Convert Gap PPN to Gap Omset (Assuming 11% tax)
+            target_omset_change = gap_ppn / 0.11
+
+            local_callback(f"Target PPN Akhir: {target_val_float:,.2f} | PPN Saat Ini: {current_ppn:,.2f}")
+            local_callback(f"Gap PPN: {gap_ppn:,.2f} | Target Perubahan Omset: {target_omset_change:,.2f}")
+
             final_gap = 0.0
 
             import os
             max_workers = max(1, int(os.cpu_count() * 0.7))
-            if target_val < 0:
-                global_gap = proses_pengurangan_omset(source_conn, target_conn, self.acc, self.start_date, self.end_date, target_val, max_workers=max_workers, log_callback=local_callback)
+            if target_omset_change < -0.001:
+                global_gap = proses_pengurangan_omset(source_conn, target_conn, self.acc, self.start_date, self.end_date, target_omset_change, max_workers=max_workers, log_callback=local_callback)
                 if abs(global_gap) > 0.001:
                     distribusikan_global_gap(source_conn, target_conn, self.acc, self.start_date, self.end_date, global_gap, max_workers=max_workers, log_callback=local_callback)
                 final_gap = global_gap
-            elif target_val > 0:
-                global_gap = proses_penambahan_omset(source_conn, target_conn, self.acc, self.start_date, self.end_date, target_val, max_workers=max_workers, log_callback=local_callback)
+            elif target_omset_change > 0.001:
+                global_gap = proses_penambahan_omset(source_conn, target_conn, self.acc, self.start_date, self.end_date, target_omset_change, max_workers=max_workers, log_callback=local_callback)
                 if abs(global_gap) > 0.001:
                     distribusikan_global_gap(source_conn, target_conn, self.acc, self.start_date, self.end_date, global_gap, max_workers=max_workers, log_callback=local_callback)
                 final_gap = global_gap

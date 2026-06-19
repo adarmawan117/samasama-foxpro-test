@@ -175,17 +175,24 @@ Converts MySQL `CREATE TABLE` DDL statements to SQLite-compatible syntax:
 
 The system performs transaction adjustments according to four primary logic scenarios to align the target tax database with a specified target PPN value.
 
-### 5.1 Scenario 1: Tax (PPN) Reduction (`proses_pengurangan_omset`)
+### 5.1 Scenario 1: Target Gap Calculation
+The user inputs a **Target Final PPN**. The system computes the Omset gap needed to reach this tax target:
+1. **Current PPN**: Calculated by summing `(JUMLAH * HRG_JUAL * F_PPN / 100)` for both sales (`djual`) and returns (`drjual`).
+2. **Gap PPN**: `Target Final PPN - Current PPN`.
+3. **Target Omset Change**: `Gap PPN / 0.11` (assuming an 11% multiplier following the legacy calculation pattern).
+
+If `Target Omset Change < 0`, the system triggers **Scenario 2 (Tax Reduction)**. If `> 0`, it triggers **Scenario 3 (Tax Addition)**.
+
+### 5.2 Scenario 2: Tax (PPN) Reduction (`proses_pengurangan_omset`)
 Used when target PPN needs to be reduced.
-- **Omset Delta Calculation**: The system checks if return transactions (`drjual`) exist. If yes, it calculates the net sales amount (`djual` sum - `drjual` sum) of taxable products (`pajak = 1`) and uses that net sum as the reduction target. If returns do not exist, it applies the requested reduction target directly.
-- **Proportional Reduction**: Calculates the reduction factor $P = \text{target\_value} / \text{total\_taxable\_omset}$.
+- **Proportional Reduction**: Calculates the reduction factor $P = \text{target\_omset\_change} / \text{total\_taxable\_omset}$.
 - **Item Traversal**: Iterates through PPN-taxable items inside sales transactions (`djual`), sorted from bottom to top (`urutan DESC`).
 - **Anti-Empty Receipt Rule**: Ensures a receipt is never completely emptied. If an invoice contains only one item, it leaves at least 1 unit.
 - **Ledger Accrual**: The reduced quantity represents tax savings. The system records this quantity in `tabungan_dan_hutang`:
   1. Checks if there is an active debt balance (`kurang`) for the product. If yes, it settles the debt first (Self-Healing).
   2. Saves the remaining quantity as a savings record (`tambah`).
 
-### 5.2 Scenario 2: Priority Savings Draw (Tax Addition)
+### 5.3 Scenario 3: Priority Savings Draw (Tax Addition)
 When the target PPN requires transaction additions, the system first attempts to draw quantities from the savings ledger (`tabungan_dan_hutang` with type `'tambah'`). Candidates are sorted by price in descending order and evaluated according to three priority tiers:
 - **Priority A (Exact Value Match)**: A savings record where the product price multiplied by its available quantity matches the target receipt addition amount exactly ($\text{price} \times \text{qty} == \text{target}$).
 - **Priority B (Exact Partial Match)**: A savings record where a subset quantity $k$ ($1 \le k \le \text{qty}$) matches the target receipt addition amount exactly ($\text{price} \times k == \text{target}$).
@@ -196,10 +203,13 @@ When savings are drawn:
 - A record is added to `log_mutasi_tabungan`.
 - The quantities are added to the transaction in `djual`.
 
-### 5.3 Scenario 3: Fictional Injection (Fallback Tax Addition)
-If the savings ledger cannot satisfy the target addition for a receipt, the system falls back to injecting fictional product quantities.
+### 5.4 Scenario 4: Fictional Injection (Fallback Tax Addition)
+If the savings ledger cannot satisfy the target addition for a receipt, the system falls back to injecting fictional product quantities. The system uses the **`HARGA11`** (smallest unit price) from the master `barang` table for any injected products.
+- **Selection**: Iterates through all available PPN-taxable products in the system.
+- **Best Fit**: Finds a product whose price allows for a quantity $k \ge 1$ such that $\text{price} \times k$ is as close as possible to the remaining target.
+- **Debt Accrual**: The injected quantity is recorded in `tabungan_dan_hutang` as a debt (`kurang`), which can be settled by future reductions (Self-Healing).
 
-### 5.4 Scenario 4: Global Gap Distribution
+### 5.5 Scenario 5: Global Gap Distribution
 If a residual global gap exists after primary reduction or addition, the system evenly distributes this leftover gap across 25% of the total available receipts (`total_receipts // 4`). This chunking mechanism ensures that no single receipt becomes abnormally bloated with extreme quantities, maintaining realistic transaction profiles.
 
 ---

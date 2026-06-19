@@ -148,60 +148,18 @@ def settle_debt_with_savings_async(db_queue, savings_cache, savings_lock, a1_pro
     upsert_tabungan_dan_hutang_async(db_queue, savings_cache, savings_lock, effective_item_acc, kode_brg, best_k, 'kurang', tanggal_dibuat=tanggal_dibuat)
 
 
-def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date, target_ppn, max_workers=1, log_callback=None):
+def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date, target_omset_change, max_workers=1, log_callback=None):
     acc_tuple = (acc,) if isinstance(acc, str) else acc
     placeholders = ", ".join(["%s"] * len(acc_tuple))
+    
+    target_val = abs(float(target_omset_change)) if target_omset_change is not None else 0.0
+    
     if log_callback and callable(log_callback):
-        log_callback(f"Action: Start Reduction | ACC: {acc_tuple} | Start Date: {start_date} | End Date: {end_date} | Target PPN: {target_ppn}")
+        log_callback(f"Action: Start Reduction | ACC: {acc_tuple} | Start Date: {start_date} | End Date: {end_date} | Target Omset Change: {target_omset_change}")
 
-    # Calculate target_omset_change
     source_cursor = source_conn.cursor()
     target_cursor = target_conn.cursor()
-    
-    try:
-        source_cursor.execute(f"""
-            SELECT COUNT(*) 
-            FROM drjual d
-            JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-            WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
-        """, (*acc_tuple, start_date, end_date))
-        has_returns = source_cursor.fetchone()[0] > 0
-    except Exception as e:
-        if "1146" in str(e) or "no such table" in str(e).lower() or "doesn't exist" in str(e).lower():
-            has_returns = False
-        else:
-            raise
-    
-    if has_returns:
-        # target = net sales
-        source_cursor.execute(f"""
-            SELECT SUM(d.JUMLAH * d.HRG_JUAL) 
-            FROM djual d
-            JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-            WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
-        """, (*acc_tuple, start_date, end_date))
-        djual_sum = source_cursor.fetchone()[0] or 0.0
-        
-        try:
-            source_cursor.execute(f"""
-                SELECT SUM(d.JUMLAH * d.HRG_JUAL) 
-                FROM drjual d
-                JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
-                WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= %s AND d.TGL_JUAL <= %s AND b.PAJAK = 1
-            """, (*acc_tuple, start_date, end_date))
-            drjual_sum = source_cursor.fetchone()[0] or 0.0
-        except Exception as e:
-            if "1146" in str(e) or "no such table" in str(e).lower() or "doesn't exist" in str(e).lower():
-                drjual_sum = 0.0
-            else:
-                raise
-        
-        net_sales = djual_sum - drjual_sum
-        target_omset_change = -net_sales
-    else:
-        target_omset_change = float(target_ppn) if target_ppn is not None else 0.0
-        
-    target_val = abs(target_omset_change)
+
     if target_val < 0.001:
         if log_callback and callable(log_callback):
             log_callback(f"Action: End Reduction | Total Reduced: 0.0 | Final Gap: {target_omset_change}")
@@ -373,12 +331,12 @@ def proses_pengurangan_omset(source_conn, target_conn, acc, start_date, end_date
     return global_gap
 
 
-def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date, target_ppn, max_workers=1, log_callback=None):
+def proses_penambahan_omset(source_conn, target_conn, acc, start_date, end_date, target_omset_change, max_workers=1, log_callback=None):
     acc_tuple = (acc,) if isinstance(acc, str) else acc
     placeholders = ", ".join(["%s"] * len(acc_tuple))
-    target_val = abs(float(target_ppn)) if target_ppn is not None else 0.0
+    target_val = abs(float(target_omset_change)) if target_omset_change is not None else 0.0
     if log_callback and callable(log_callback):
-        log_callback(f"Action: Start Addition | ACC: {acc_tuple} | Start Date: {start_date} | End Date: {end_date} | Target PPN: {target_ppn}")
+        log_callback(f"Action: Start Addition | ACC: {acc_tuple} | Start Date: {start_date} | End Date: {end_date} | Target Omset Change: {target_omset_change}")
         
     if target_val < 0.001:
         if log_callback and callable(log_callback):

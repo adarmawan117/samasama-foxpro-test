@@ -6,4 +6,5 @@ class DBConfig:
     HOST = 'localhost'
     USER = 'root'
     PASSWORD = 'root' # Isi dengan password root Anda
-    NAME = 'INVENTORY' # Menggunakan database INVENTORY dari file SQL
+    # NAME = 'INVENTORY' # Menggunakan database INVENTORY 
+    NAME = 'target_db' # Menggunakan database INVENTORY dari file SQL

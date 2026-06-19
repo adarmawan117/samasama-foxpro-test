@@ -88,3 +88,9 @@ Sistem ini bekerja layaknya sebuah tim pencatat keuangan yang menggunakan metode
     - **a. Prioritas Akun A1:** Sebelum menyimpan data celengan baru (`tambah`), catatan hutang (`kurang`), atau melakukan suntikan fiktif dari celengan barang, sistem akan memeriksa tabel master barang. Jika kode barang (`KODE_BRG`) tersebut terdaftar di bawah akun `A1`, maka mutasi celengan barang tersebut wajib dicatat menggunakan akun `ACC = 'A1'`, meskipun nota transaksi yang sedang diproses berasal dari akun grosir `A3`.
     - **b. Fallback Akun Asal:** Jika barang tersebut tidak terdaftar di bawah akun `A1` pada master barang, sistem akan menggunakan akun asal dari nota transaksi tersebut (misalnya tetap dicatat sebagai `A3`).
     - **c. Pembersihan Bersih (Rollback):** Saat proses pemulihan (rollback) dijalankan untuk akun target tertentu (seperti `A3`), sistem akan mendeteksi barang-barang yang dialihkan ke akun `A1` tersebut secara otomatis. Sistem akan membersihkan riwayat mutasi celengan dan catatan hutang baik yang tercatat di `A3` maupun yang dialihkan ke `A1` untuk barang-barang terkait, sehingga data kembali bersih sempurna tanpa ada catatan celengan yang tertinggal.
+
+### 15. Logika Perhitungan Target Pajak (PPN)
+15. Sistem mematuhi standar perhitungan dan asumsi dari sistem lama (*legacy*) demi konsistensi data:
+    - **a. Rumus Pajak:** PPN Jual dihitung dari Harga Kotor (`HRG_JUAL`) dikali 11%, bukan menggunakan rumus DPP matematika murni (`Harga / 1.11`).
+    - **b. Selisih (GAP) Pajak:** Angka yang Anda input di aplikasi adalah **Target Akhir PPN**. Sistem akan mencari selisihnya terhadap *PPN Saat Ini*, lalu mengubah selisih tersebut menjadi *Gap Omset* dengan cara membaginya 11%.
+    - **c. Harga Suntikan Fiktif:** Jika sistem harus menyuntikkan barang baru (fiktif) ke dalam struk penjualan, sistem akan selalu mengambil patokan harga dari field **`HARGA11`** (satuan terkecil/pcs) di tabel master barang.
