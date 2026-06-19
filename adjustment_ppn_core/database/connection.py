@@ -92,7 +92,7 @@ class MySQLCursorWrapper:
                 return self._cursor.execute(query)
         except Exception as e:
             err_str = str(e).lower()
-            if "closed" in err_str or "gone away" in err_str or "lost connection" in err_str or "(0, '')" in err_str or "10038" in err_str:
+            if "closed" in err_str or "gone away" in err_str or "lost connection" in err_str or "(0, '')" in err_str or "10038" in err_str or "index out of range" in err_str:
                 self._wrapper.reconnect()
                 self._cursor = self._wrapper._conn.cursor()
                 if params is not None:
@@ -106,7 +106,7 @@ class MySQLCursorWrapper:
             return self._cursor.executemany(query, seq_of_params)
         except Exception as e:
             err_str = str(e).lower()
-            if "closed" in err_str or "gone away" in err_str or "lost connection" in err_str or "(0, '')" in err_str or "10038" in err_str:
+            if "closed" in err_str or "gone away" in err_str or "lost connection" in err_str or "(0, '')" in err_str or "10038" in err_str or "index out of range" in err_str:
                 self._wrapper.reconnect()
                 self._cursor = self._wrapper._conn.cursor()
                 return self._cursor.executemany(query, seq_of_params)
@@ -157,7 +157,7 @@ class MySQLConnectionWrapper:
         try:
             self._conn.commit()
         except Exception as e:
-            if "closed" in str(e).lower() or "gone away" in str(e).lower():
+            if "closed" in str(e).lower() or "gone away" in str(e).lower() or "index out of range" in str(e).lower():
                 self.reconnect()
                 self._conn.commit()
             else:
