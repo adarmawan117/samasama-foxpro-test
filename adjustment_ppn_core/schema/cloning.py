@@ -172,6 +172,12 @@ def clone_full_database(source_config, target_config, is_sandbox, log_callback=N
                     if log_callback:
                         log_callback(f"Synchronized {total_rows} rows for table {table}")
                 cursor_src_data.close()
+            
+            # Create custom transaction tables
+            if log_callback:
+                log_callback("Creating custom transaction tables in target database...")
+            create_tabungan_dan_hutang_table(conn_tgt, is_sqlite=False)
+            create_log_mutasi_tabungan_table(conn_tgt, is_sqlite=False)
                         
             # Enable foreign key checks
             cursor_tgt.execute("SET FOREIGN_KEY_CHECKS = 1")

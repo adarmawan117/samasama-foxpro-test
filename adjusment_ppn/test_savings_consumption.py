@@ -616,6 +616,303 @@ class TestSavingsConsumptionAndSoftDelete(unittest.TestCase):
         source_conn.close()
         target_conn.close()
 
+    def test_6_duplicate_barang_deduplication(self):
+        """Verify that duplicate rows in the barang master do not cause duplicate djual insertions or inflated omset."""
+        src_conn, tgt_conn = self.init_databases()
+        
+        # We want to insert duplicate rows in barang. Since init_databases creates barang with UNIQUE constraint,
+        # we drop the table and recreate it without the UNIQUE constraint for this test.
+        for conn in (src_conn, tgt_conn):
+            conn.execute("DROP TABLE barang")
+            conn.execute("""
+            CREATE TABLE barang (
+                ACC VARCHAR(3) NOT NULL,
+                KODE_BRG VARCHAR(10) NOT NULL,
+                NAMA_BRG VARCHAR(75) NOT NULL DEFAULT '',
+                PAJAK INT NOT NULL,
+                HARGA11 DOUBLE NOT NULL DEFAULT 0.0,
+                HRG_BELI DOUBLE NOT NULL DEFAULT 0.0,
+                URUTAN INTEGER PRIMARY KEY AUTOINCREMENT
+            );
+            """)
+            conn.commit()
+            
+        # Populate barang with duplicate rows for BRG001
+        duplicate_barang = [
+            {"ACC": "001", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju A", "PAJAK": 1, "HARGA11": 10000.0, "HRG_BELI": 8000.0},
+            {"ACC": "001", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju A (Duplicate)", "PAJAK": 1, "HARGA11": 10000.0, "HRG_BELI": 8000.0},
+            {"ACC": "001", "KODE_BRG": "BRG002", "NAMA_BRG": "Sabun B", "PAJAK": 1, "HARGA11": 5000.0, "HRG_BELI": 4000.0}
+        ]
+        insert_data(src_conn, 'barang', duplicate_barang)
+        insert_data(tgt_conn, 'barang', duplicate_barang)
+        
+        # Populate initial sales (djual)
+        initial_djual = [
+            {"TGL_JUAL": "2026-06-15", "F_JUAL": "J20260615", "ACC": "001", "KODE_BRG": "BRG002", "JUMLAH": 2.0, "HRG_BELI": 4000.0, "HRG_JUAL": 5000.0, "F_PPN": 10.0}
+        ]
+        insert_data(src_conn, 'djual', initial_djual)
+        insert_data(tgt_conn, 'djual', initial_djual)
+        
+        # Populate initial savings: 1 Baju (BRG001)
+        initial_savings = [
+            {"acc": "001", "kode_brg": "BRG001", "qty": 1.0, "tipe": "tambah", "tanggal_dibuat": "2026-06-15"}
+        ]
+        insert_data(tgt_conn, 'tabungan_dan_hutang', initial_savings)
+        
+        src_conn.close()
+        tgt_conn.close()
+        
+        # Run addition adjustment
+        source_conn = get_db_connection(sandbox=True, database=self.src_db_path)
+        target_conn = get_db_connection(sandbox=True, database=self.tgt_db_path)
+        
+        proses_penambahan_omset(
+            source_conn, target_conn, acc="001", 
+            start_date="2026-06-01", end_date="2026-06-30", 
+            target_omset_change=10000.0
+        )
+        
+        # Check djual in target DB
+        cursor = target_conn.cursor()
+        cursor.execute("SELECT * FROM djual WHERE KODE_BRG='BRG001'")
+        inserted_rows = cursor.fetchall()
+        
+        # Assert that only ONE row was inserted into djual (no duplicates)
+        self.assertEqual(len(inserted_rows), 1, f"Expected exactly 1 row inserted for BRG001, got {len(inserted_rows)}")
+        
+        # Check savings qty is now 0
+        cursor.execute("SELECT qty FROM tabungan_dan_hutang WHERE kode_brg='BRG001'")
+        self.assertEqual(cursor.fetchone()[0], 0.0)
+        
+        source_conn.close()
+        target_conn.close()
+
+    def test_7_dual_phase_savings_consumed_logs_written(self):
+        """Verify that when dual-phase savings are consumed, logs are written to log_mutasi_tabungan."""
+        from adjustment_ppn_core.calculator.adjustment_dual import proses_adjustment_dual
+        src_conn, tgt_conn = self.init_databases()
+        
+        # Populate barang master
+        insert_data(src_conn, 'barang', DEFAULT_BARANG)
+        insert_data(tgt_conn, 'barang', DEFAULT_BARANG)
+        
+        # Populate initial sales (djual) in both
+        initial_djual = [
+            {"TGL_JUAL": "2026-06-15", "F_JUAL": "J20260615", "ACC": "001", "KODE_BRG": "BRG002", "JUMLAH": 1.0, "HRG_BELI": 800.0, "HRG_JUAL": 1000.0, "F_PPN": 10.0}
+        ]
+        insert_data(src_conn, 'djual', initial_djual)
+        insert_data(tgt_conn, 'djual', initial_djual)
+        
+        # Populate initial savings in tabungan_dan_hutang: 1 Baju (BRG001) which costs 10,000
+        initial_savings = [
+            {"acc": "001", "kode_brg": "BRG001", "qty": 1.0, "tipe": "tambah", "tanggal_dibuat": "2026-06-15"}
+        ]
+        insert_data(tgt_conn, 'tabungan_dan_hutang', initial_savings)
+        
+        # Verify initial state
+        cursor = tgt_conn.cursor()
+        cursor.execute("SELECT urutan, qty FROM tabungan_dan_hutang WHERE kode_brg='BRG001'")
+        row = cursor.fetchone()
+        self.assertIsNotNone(row)
+        saving_id = row[0]
+        
+        src_conn.close()
+        tgt_conn.close()
+        
+        # Run dual adjustment
+        is_sandbox = True
+        source_conn = get_db_connection(sandbox=is_sandbox, database=self.src_db_path)
+        target_conn = get_db_connection(sandbox=is_sandbox, database=self.tgt_db_path)
+        
+        # Current omset is 1000. target_ppn = 11000 means target addition of 10000.
+        proses_adjustment_dual(
+            source_conn, target_conn, acc="001", 
+            start_date="2026-06-01", end_date="2026-06-30", 
+            target_ppn=11000.0, target_btkp=0.0, is_sandbox=is_sandbox
+        )
+        
+        # Retrieve target connection cursor to inspect log_mutasi_tabungan
+        cursor_verify = target_conn.cursor()
+        cursor_verify.execute("SELECT * FROM log_mutasi_tabungan")
+        logs = cursor_verify.fetchall()
+        
+        # Assert that log was written
+        self.assertEqual(len(logs), 1, "Expected exactly one log written to log_mutasi_tabungan in dual phase")
+        log_id, log_tabungan_id, qty_dipakai, tanggal_dipakai = logs[0]
+        self.assertEqual(log_tabungan_id, saving_id)
+        self.assertEqual(qty_dipakai, 1.0)
+        
+        source_conn.close()
+        target_conn.close()
+
+    def test_8_dual_phase_a1_priority_rule(self):
+        """Verify the A1 Priority Rule in dual phase for redirected savings and fictional item debt."""
+        from adjustment_ppn_core.calculator.adjustment_dual import proses_adjustment_dual
+        src_conn, tgt_conn = self.init_databases()
+        
+        custom_barang = [
+            # Product existing in both A1 and A3
+            {"ACC": "A1", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju A1", "PAJAK": 1, "HARGA11": 10000.0, "HRG_BELI": 8000.0},
+            {"ACC": "A3", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju A3", "PAJAK": 1, "HARGA11": 10000.0, "HRG_BELI": 8000.0},
+            # Product existing only in A3
+            {"ACC": "A3", "KODE_BRG": "BRG002", "NAMA_BRG": "Sabun A3", "PAJAK": 1, "HARGA11": 10000.0, "HRG_BELI": 8000.0}
+        ]
+        insert_data(src_conn, 'barang', custom_barang)
+        insert_data(tgt_conn, 'barang', custom_barang)
+        
+        # Populate sales (djual) in both
+        # Current omset is 50,000 for BRG001 and 50,000 for BRG002 = 100,000
+        initial_djual = [
+            {"TGL_JUAL": "2026-06-15", "F_JUAL": "J_A3_1", "ACC": "A3", "KODE_BRG": "BRG001", "JUMLAH": 5.0, "HRG_BELI": 8000.0, "HRG_JUAL": 10000.0, "F_PPN": 10.0},
+            {"TGL_JUAL": "2026-06-15", "F_JUAL": "J_A3_2", "ACC": "A3", "KODE_BRG": "BRG002", "JUMLAH": 5.0, "HRG_BELI": 8000.0, "HRG_JUAL": 10000.0, "F_PPN": 10.0}
+        ]
+        insert_data(src_conn, 'djual', initial_djual)
+        insert_data(tgt_conn, 'djual', initial_djual)
+        
+        src_conn.close()
+        tgt_conn.close()
+        
+        # Run dual adjustment with target_ppn = 80000 (which is a reduction of -20000)
+        is_sandbox = True
+        source_conn = get_db_connection(sandbox=is_sandbox, database=self.src_db_path)
+        target_conn = get_db_connection(sandbox=is_sandbox, database=self.tgt_db_path)
+        
+        proses_adjustment_dual(
+            source_conn, target_conn, acc="A3", 
+            start_date="2026-06-01", end_date="2026-06-30", 
+            target_ppn=80000.0, target_btkp=0.0, is_sandbox=is_sandbox
+        )
+        
+        # Verify savings recorded
+        cursor = target_conn.cursor()
+        cursor.execute("SELECT acc, kode_brg, qty, tipe FROM tabungan_dan_hutang ORDER BY kode_brg")
+        rows = cursor.fetchall()
+        
+        self.assertEqual(len(rows), 2)
+        # BRG001 has been redirected to A1
+        self.assertEqual(rows[0][0], "A1")
+        self.assertEqual(rows[0][1], "BRG001")
+        self.assertEqual(rows[0][2], 1.0)
+        
+        # BRG002 has fallback to A3
+        self.assertEqual(rows[1][0], "A3")
+        self.assertEqual(rows[1][1], "BRG002")
+        self.assertEqual(rows[1][2], 1.0)
+        
+        # Now run an addition phase by setting target PPN back to 100,000 (meaning +20,000)
+        # It should draw the redirected A1 saving (BRG001) and A3 saving (BRG002)
+        proses_adjustment_dual(
+            source_conn, target_conn, acc="A3", 
+            start_date="2026-06-01", end_date="2026-06-30", 
+            target_ppn=100000.0, target_btkp=0.0, is_sandbox=is_sandbox
+        )
+        
+        # Verify that they were drawn (qty should become 0)
+        cursor.execute("SELECT acc, kode_brg, qty, tipe FROM tabungan_dan_hutang ORDER BY kode_brg")
+        rows_after = cursor.fetchall()
+        for r in rows_after:
+            self.assertEqual(r[2], 0.0, f"Expected savings to be consumed, got {r[2]}")
+            
+        # Verify that logs were written to log_mutasi_tabungan for both drawn savings
+        cursor.execute("SELECT COUNT(*) FROM log_mutasi_tabungan")
+        log_count = cursor.fetchone()[0]
+        self.assertEqual(log_count, 2, f"Expected 2 logs written, got {log_count}")
+        
+        # Now let's trigger a fictional injection by requesting a larger addition: target_ppn = 120000 (which is +20000 above 100k)
+        # Since target PPN is 120,000 and current is 100,000, it needs to inject fictional items.
+        # Fictional items injected for A3:
+        # BRG001 exists in A1, so its debt should be redirected to A1.
+        # BRG002 exists in A3, so its debt should be in A3.
+        proses_adjustment_dual(
+            source_conn, target_conn, acc="A3", 
+            start_date="2026-06-01", end_date="2026-06-30", 
+            target_ppn=120000.0, target_btkp=0.0, is_sandbox=is_sandbox
+        )
+        
+        # Verify that debt ('kurang' records) were written to tabungan_dan_hutang
+        cursor.execute("SELECT acc, kode_brg, qty, tipe FROM tabungan_dan_hutang WHERE tipe = 'kurang' ORDER BY kode_brg")
+        debt_rows = cursor.fetchall()
+        self.assertGreater(len(debt_rows), 0, "Expected at least one debt record injected")
+        for dr in debt_rows:
+            if dr[1] == "BRG001":
+                self.assertEqual(dr[0], "A1", "Expected BRG001 debt to be redirected to A1 account")
+            elif dr[1] == "BRG002":
+                self.assertEqual(dr[0], "A3", "Expected BRG002 debt to fallback to A3 account")
+                
+        source_conn.close()
+        target_conn.close()
+
+    def test_9_dual_phase_duplicate_barang_deduplication(self):
+        """Verify that duplicate rows in the barang master do not cause duplicate djual insertions or inflated omset in dual phase."""
+        from adjustment_ppn_core.calculator.adjustment_dual import proses_adjustment_dual
+        src_conn, tgt_conn = self.init_databases()
+        
+        # Drop and recreate barang tables without UNIQUE constraint to allow duplicate master records
+        for conn in (src_conn, tgt_conn):
+            conn.execute("DROP TABLE barang")
+            conn.execute("""
+            CREATE TABLE barang (
+                ACC VARCHAR(3) NOT NULL,
+                KODE_BRG VARCHAR(10) NOT NULL,
+                NAMA_BRG VARCHAR(75) NOT NULL DEFAULT '',
+                PAJAK INT NOT NULL,
+                HARGA11 DOUBLE NOT NULL DEFAULT 0.0,
+                HRG_BELI DOUBLE NOT NULL DEFAULT 0.0,
+                URUTAN INTEGER PRIMARY KEY AUTOINCREMENT
+            );
+            """)
+            conn.commit()
+            
+        # Populate barang with duplicate rows for BRG001
+        duplicate_barang = [
+            {"ACC": "001", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju A", "PAJAK": 1, "HARGA11": 10000.0, "HRG_BELI": 8000.0},
+            {"ACC": "001", "KODE_BRG": "BRG001", "NAMA_BRG": "Baju A (Duplicate)", "PAJAK": 1, "HARGA11": 10000.0, "HRG_BELI": 8000.0},
+            {"ACC": "001", "KODE_BRG": "BRG002", "NAMA_BRG": "Sabun B", "PAJAK": 1, "HARGA11": 5000.0, "HRG_BELI": 4000.0}
+        ]
+        insert_data(src_conn, 'barang', duplicate_barang)
+        insert_data(tgt_conn, 'barang', duplicate_barang)
+        
+        # Populate initial sales (djual)
+        initial_djual = [
+            {"TGL_JUAL": "2026-06-15", "F_JUAL": "J20260615", "ACC": "001", "KODE_BRG": "BRG002", "JUMLAH": 2.0, "HRG_BELI": 4000.0, "HRG_JUAL": 5000.0, "F_PPN": 10.0}
+        ]
+        insert_data(src_conn, 'djual', initial_djual)
+        insert_data(tgt_conn, 'djual', initial_djual)
+        
+        # Populate initial savings: 1 Baju (BRG001)
+        initial_savings = [
+            {"acc": "001", "kode_brg": "BRG001", "qty": 1.0, "tipe": "tambah", "tanggal_dibuat": "2026-06-15"}
+        ]
+        insert_data(tgt_conn, 'tabungan_dan_hutang', initial_savings)
+        
+        src_conn.close()
+        tgt_conn.close()
+        
+        # Run dual adjustment targeting target_ppn = 20000 (current is 10000, so we need +10000)
+        source_conn = get_db_connection(sandbox=True, database=self.src_db_path)
+        target_conn = get_db_connection(sandbox=True, database=self.tgt_db_path)
+        
+        proses_adjustment_dual(
+            source_conn, target_conn, acc="001", 
+            start_date="2026-06-01", end_date="2026-06-30", 
+            target_ppn=20000.0, target_btkp=0.0, is_sandbox=True
+        )
+        
+        # Check djual in target DB
+        cursor = target_conn.cursor()
+        cursor.execute("SELECT * FROM djual WHERE KODE_BRG='BRG001'")
+        inserted_rows = cursor.fetchall()
+        
+        # Assert that only ONE row was inserted into djual (no duplicates)
+        self.assertEqual(len(inserted_rows), 1, f"Expected exactly 1 row inserted for BRG001 under dual phase, got {len(inserted_rows)}")
+        
+        # Check savings qty is now 0
+        cursor.execute("SELECT qty FROM tabungan_dan_hutang WHERE kode_brg='BRG001'")
+        self.assertEqual(cursor.fetchone()[0], 0.0)
+        
+        source_conn.close()
+        target_conn.close()
+
 
 if __name__ == '__main__':
     unittest.main()

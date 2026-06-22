@@ -186,7 +186,10 @@ class WorkerThread(QThread):
 
             source_conn = get_db_connection(sandbox=is_sandbox, **self.source_config)
             target_conn = get_db_connection(sandbox=is_sandbox, **self.target_config)
+            
+            from adjustment_ppn_core.schema.migrations import create_tabungan_dan_hutang_table, create_log_mutasi_tabungan_table
             create_tabungan_dan_hutang_table(target_conn, is_sqlite=is_sandbox)
+            create_log_mutasi_tabungan_table(target_conn, is_sqlite=is_sandbox)
 
             # Check if rerun
             if check_transactions_exist_in_range(target_conn, self.acc, self.start_date, self.end_date):

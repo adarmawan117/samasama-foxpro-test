@@ -3,13 +3,39 @@ import random
 import threading
 from collections import defaultdict
 
-def _upsert_tabungan(c_tgt, acc, kode_brg, qty, tipe, is_sandbox):
+def _upsert_tabungan(c_tgt, acc, kode_brg, qty, tipe, is_sandbox, tanggal_dibuat=None):
     c_tgt.execute(f"SELECT urutan FROM tabungan_dan_hutang WHERE acc = {'?' if is_sandbox else '%s'} AND kode_brg = {'?' if is_sandbox else '%s'} AND tipe = {'?' if is_sandbox else '%s'}", (acc, kode_brg, tipe))
     row = c_tgt.fetchone()
     if row:
         c_tgt.execute(f"UPDATE tabungan_dan_hutang SET qty = qty + {'?' if is_sandbox else '%s'} WHERE urutan = {'?' if is_sandbox else '%s'}", (qty, row[0]))
     else:
-        c_tgt.execute(f"INSERT INTO tabungan_dan_hutang (qty, acc, kode_brg, tipe) VALUES ({'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'})", (qty, acc, kode_brg, tipe))
+        if tanggal_dibuat is not None:
+            c_tgt.execute(f"INSERT INTO tabungan_dan_hutang (qty, acc, kode_brg, tipe, tanggal_dibuat) VALUES ({'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'})", (qty, acc, kode_brg, tipe, tanggal_dibuat))
+        else:
+            c_tgt.execute(f"INSERT INTO tabungan_dan_hutang (qty, acc, kode_brg, tipe) VALUES ({'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'})", (qty, acc, kode_brg, tipe))
+
+
+def _process_reduction_savings(c_tgt, target_acc, kode_brg, qty_to_reduce, tanggal_dibuat, is_sandbox):
+    # 1. Check and reduce 'kurang' records of the same product (self-healing debt settlement)
+    c_tgt.execute(
+        f"SELECT urutan, qty FROM tabungan_dan_hutang WHERE acc = {'?' if is_sandbox else '%s'} AND kode_brg = {'?' if is_sandbox else '%s'} AND tipe = 'kurang'",
+        (target_acc, kode_brg)
+    )
+    debt_row = c_tgt.fetchone()
+    if debt_row:
+        debt_urutan, debt_qty = debt_row[0], float(debt_row[1])
+        if debt_qty > 0:
+            settled = min(qty_to_reduce, debt_qty)
+            new_debt_qty = debt_qty - settled
+            c_tgt.execute(
+                f"UPDATE tabungan_dan_hutang SET qty = {'?' if is_sandbox else '%s'} WHERE urutan = {'?' if is_sandbox else '%s'}",
+                (new_debt_qty, debt_urutan)
+            )
+            qty_to_reduce -= settled
+            
+    # 2. If there's still quantity remaining to reduce (which becomes savings), insert/update as 'tambah'
+    if qty_to_reduce > 0:
+        _upsert_tabungan(c_tgt, target_acc, kode_brg, qty_to_reduce, 'tambah', is_sandbox, tanggal_dibuat)
 
 
 def proses_pengurangan_fase(source_conn, target_conn, acc, start_date, end_date, target_gap, category_sql_filter, phase_name, is_sandbox, log_callback):
@@ -21,6 +47,10 @@ def proses_pengurangan_fase(source_conn, target_conn, acc, start_date, end_date,
     
     c_src = source_conn.cursor()
     c_tgt = target_conn.cursor()
+    
+    c_tgt.execute("SELECT DISTINCT KODE_BRG FROM barang WHERE ACC = 'A1'")
+    a1_products = {row[0] for row in c_tgt.fetchall()}
+
     
     # 1. Total Base for proportion
     c_src.execute(f"""
@@ -105,8 +135,9 @@ def proses_pengurangan_fase(source_conn, target_conn, acc, start_date, end_date,
                     remaining = target_gap - total_reduced
                     log_callback(f"[{item['item_acc']}] Action: Reduce Qty [{index}/{total_receipts}] | Receipt: {f_jual} | Product: {item['kode_brg']} | Qty Reduced: {qty_to_reduce} | Value: {val_reduced:,.2f} | Remaining Gap: {remaining:,.2f}")
                 
-                # Save to savings (for penambahan later)
-                _upsert_tabungan(c_tgt, item['item_acc'], item['kode_brg'], qty_to_reduce, 'tambah', is_sandbox)
+                # Save to savings (for penambahan later) with redirection & self-healing
+                target_acc = 'A1' if item['kode_brg'] in a1_products else item['item_acc']
+                _process_reduction_savings(c_tgt, target_acc, item['kode_brg'], qty_to_reduce, item['tgl'], is_sandbox)
                 
     remaining_gap = target_gap - total_reduced
     if log_callback:
@@ -141,7 +172,8 @@ def proses_pengurangan_fase(source_conn, target_conn, acc, start_date, end_date,
                     made_progress = True
                     
                     c_tgt.execute("UPDATE djual SET jumlah = ? WHERE urutan = ?" if is_sandbox else "UPDATE djual SET jumlah = %s WHERE urutan = %s", (item['jumlah'], item['urutan']))
-                    _upsert_tabungan(c_tgt, item['item_acc'], item['kode_brg'], 1, 'tambah', is_sandbox)
+                    target_acc = 'A1' if item['kode_brg'] in a1_products else item['item_acc']
+                    _process_reduction_savings(c_tgt, target_acc, item['kode_brg'], 1.0, item['tgl'], is_sandbox)
                     
             if not made_progress:
                 break # All items are at qty=1
@@ -160,6 +192,9 @@ def proses_penambahan_fase(source_conn, target_conn, acc, start_date, end_date, 
     
     c_src = source_conn.cursor()
     c_tgt = target_conn.cursor()
+    
+    c_tgt.execute("SELECT DISTINCT KODE_BRG FROM barang WHERE ACC = 'A1'")
+    a1_products = {row[0] for row in c_tgt.fetchall()}
     
     # 1. Base Omset
     c_src.execute(f"""
@@ -191,21 +226,24 @@ def proses_penambahan_fase(source_conn, target_conn, acc, start_date, end_date, 
     # Load Available Savings for this specific category
     c_tgt.execute(f"""
         SELECT t.urutan, t.qty, t.acc, t.kode_brg, 
-               b.HARGA11 as base_price
+               MAX(b.HARGA11) as base_price,
+               MAX(b.HRG_BELI) as hrg_beli
         FROM tabungan_dan_hutang t
         JOIN barang b ON t.kode_brg = b.kode_brg AND t.acc = b.acc
-        WHERE t.acc IN ({placeholders}) AND t.qty > 0 AND t.tipe = 'tambah'
+        WHERE (t.acc IN ({placeholders}) OR t.acc = 'A1') AND t.qty > 0 AND t.tipe = 'tambah'
         AND {category_sql_filter}
+        GROUP BY t.urutan, t.qty, t.acc, t.kode_brg
     """, (*acc_tuple,))
     savings = c_tgt.fetchall()
-    savings_list = [{'urutan': s[0], 'qty': float(s[1]), 'item_acc': s[2], 'kode_brg': s[3], 'price': float(s[4])} for s in savings]
+    savings_list = [{'urutan': s[0], 'qty': float(s[1]), 'item_acc': s[2], 'kode_brg': s[3], 'price': float(s[4]), 'hrg_beli': float(s[5])} for s in savings]
     
     # Load Master Barang Fiktif as fallback (only for this category!)
     c_src.execute(f"""
-        SELECT KODE_BRG, ACC, HRG_BELI, HARGA11, 0, 0, 0, 0,
-               HARGA11 as actual_price
+        SELECT KODE_BRG, ACC, MAX(HRG_BELI), MAX(HARGA11), 0, 0, 0, 0,
+               MAX(HARGA11) as actual_price
         FROM barang b
         WHERE ACC IN ({placeholders}) AND {category_sql_filter} AND HARGA11 > 0
+        GROUP BY KODE_BRG, ACC
     """, (*acc_tuple,))
     fiktif_items = c_src.fetchall()
     if not fiktif_items:
@@ -245,10 +283,17 @@ def proses_penambahan_fase(source_conn, target_conn, acc, start_date, end_date, 
                 
                 c_tgt.execute(f"""
                     INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN)
-                    SELECT {'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'}, 
-                           HRG_BELI, HARGA11, 0.0, 0.0, 0.0, 0.0, 10.0
-                    FROM barang WHERE KODE_BRG = {'?' if is_sandbox else '%s'} AND ACC = {'?' if is_sandbox else '%s'}
-                """, (tgl_jual, f_jual, sav['item_acc'], sav['kode_brg'], qty_used, sav['kode_brg'], sav['item_acc']))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0.0, 0.0, 0.0, 0.0, 10.0)
+                """ if is_sandbox else f"""
+                    INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 0.0, 0.0, 0.0, 0.0, 10.0)
+                """, (tgl_jual, f_jual, sav['item_acc'], sav['kode_brg'], float(qty_used), sav['hrg_beli'], sav['price']))
+                
+                # Log consumed savings
+                c_tgt.execute(f"""
+                    INSERT INTO log_mutasi_tabungan (id_tabungan, qty_dipakai, tanggal_dipakai)
+                    VALUES ({'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'}, {'?' if is_sandbox else '%s'})
+                """, (sav['urutan'], float(qty_used), tgl_jual))
                 
                 val_added = qty_used * price
                 target_addition -= val_added
@@ -268,6 +313,8 @@ def proses_penambahan_fase(source_conn, target_conn, acc, start_date, end_date, 
             price = float(fiktif[8])
             
             qty_needed = int(target_addition // price)
+            if qty_needed <= 0:
+                break
                 
             c_tgt.execute(f"""
                 INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN)
@@ -276,6 +323,10 @@ def proses_penambahan_fase(source_conn, target_conn, acc, start_date, end_date, 
                 INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 10.0)
             """, (tgl_jual, f_jual, fiktif[1], fiktif[0], float(qty_needed), float(fiktif[2]), float(fiktif[3]), float(fiktif[4]), float(fiktif[5]), float(fiktif[6]), float(fiktif[7])))
+            
+            # Record debt with A1 Priority redirect
+            debt_acc = 'A1' if fiktif[0] in a1_products else fiktif[1]
+            _upsert_tabungan(c_tgt, debt_acc, fiktif[0], float(qty_needed), 'kurang', is_sandbox, tgl_jual)
             
             val_added = qty_needed * price
             target_addition -= val_added
@@ -306,11 +357,15 @@ def proses_penambahan_fase(source_conn, target_conn, acc, start_date, end_date, 
             
             c_tgt.execute(f"""
                 INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 10.0)
+                VALUES (?, ?, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, 10.0)
             """ if is_sandbox else f"""
                 INSERT INTO djual (TGL_JUAL, F_JUAL, ACC, KODE_BRG, JUMLAH, HRG_BELI, HRG_JUAL, DISC1, DISC2, DISC3, DISC_RP, F_PPN)
                 VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s, %s, 10.0)
             """, (tgl_jual, f_jual, fiktif[1], fiktif[0], float(fiktif[2]), float(fiktif[3]), float(fiktif[4]), float(fiktif[5]), float(fiktif[6]), float(fiktif[7])))
+            
+            # Record debt with A1 Priority redirect
+            debt_acc = 'A1' if fiktif[0] in a1_products else fiktif[1]
+            _upsert_tabungan(c_tgt, debt_acc, fiktif[0], 1.0, 'kurang', is_sandbox, tgl_jual)
             
             val_added = price
             remaining_gap -= val_added

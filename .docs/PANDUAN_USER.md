@@ -78,13 +78,22 @@ python python_test/run_gui.py
    - Click **Yes** to authorize the system to clone the database structure and initial transactions from the Source DB when the adjustment is started. **Note:** Clicking Yes will also automatically trigger the Auto-Save Settings feature.
 3. **Select Account & Target Parameters**:
    - After a successful connection test, the account dropdown menu will populate with accounts retrieved from the source `accinv` table. If the `accinv` table is empty or missing, the system will fallback to fetching distinct active accounts directly from the `barang` table (ensuring `A1` and `A3` are always available). You can select a specific branch or the "ALL - A1 & A3 (Gabungan)" option.
-   - If "ALL" is chosen, the single Target PPN you enter will be proportionally deducted/added across the combined total omset of both A1 and A3.
+   - If "ALL" is chosen, the targets you enter will be proportionally distributed across the combined total omset of both A1 and A3.
    - This "ALL" mode activates the **Silang Subsidi (Cross-Pollination)** feature: any leftover deductions (savings) from A1 can be automatically used to cover additions in A3, and vice versa.
    - Define the start and end dates for the adjustment range using the date widgets.
-   - Enter the **Target Penjualan (REAL JUAL)** (gross sales target) you wish to achieve in the target database.
+   - **Double Engine Targets**: Enter the target sales in the respective fields:
+     - `target_ppn_input`: Gross target sales for taxable items (PPN).
+     - `target_btkp_input`: Gross target sales for non-taxable items (BTKP).
+   - **Real-Time Output Monitoring**: The application displays the current status of transactions from the source database:
+     - Original Sales: `current_ppn_omset_input` (PPN) and `current_btkp_omset_input` (BTKP).
+     - Return Totals: `current_ppn_retur_input` and `current_btkp_retur_input`.
+     - Net Turnover (Target Base): `current_net_ppn_input` and `current_net_btkp_input`.
+   - **Efficient Single-Scan Query**: The workers execute a highly optimized `SUM(CASE WHEN...)` query (separating `PAJAK IN (1, 3)` for PPN and `PAJAK = 2` for BTKP) to compute net values in a single database read without memory overhead.
 
-4. **Jalankan Proses (Execute Adjustment)**:
+4. **Jalankan Proses (Execute Adjustment & Dual-Loop)**:
    - Click the **Proses** button. The application locks input controls and displays an indeterminate progress bar.
+   - **Dual-Loop Execution Flow**: The program automatically runs sequential loops for PPN and BTKP (via `adjustment_dual.py`), processing and committing changes for PPN first, then running the BTKP phase.
+   - **Independent Commits**: At the end of each loop phase, `target_conn.commit()` is executed. This releases row/page database locks early, preventing database lock contention, memory leaks, and OS-level Access Violations.
    - **Idempotency Check**: If transactions already exist in the target database within the specified date range, the application displays a confirmation prompt: **"Konfirmasi Rerun. Apakah Anda ingin melakukan rollback dan menulis ulang data transaksi pada rentang tanggal tersebut?"**
    - Click **Yes** to execute a full rollback of the ledger tables (`tabungan_dan_hutang` and `log_mutasi_tabungan`), purge existing target transactions, re-synchronize clean raw data from the Source DB, and run the adjustment.
 5. **Export Log details**:
@@ -159,3 +168,22 @@ To manage shared inventory and tax liabilities between retail and wholesale chan
 ### 6.2 Rollback Behavior
 - When a rollback is performed for a target account (e.g., `A3`), the rollback engine queries the master `barang` table to identify which products of that account are redirected to `A1`.
 - The engine then restores the consumed savings logs and deletes newly created savings/debt records for both the target account (`A3`) and the redirected account (`A1`) for those specific products. This ensures complete data integrity and prevents dangling overridden records.
+
+---
+
+## 7. Master Data Duplication Aggregation and Tax Category Scoping
+
+To ensure database consistency and prevent tax audit non-compliance, the adjustment system implements strict master data aggregation and tax scoping rules:
+
+### 7.1 Master Data Aggregation (Prevention of Cartesian Explosion)
+- **Problem**: The master `barang` database matches items using a composite key consisting of `KODE_BRG` and `ACC`. Over time, duplicate rows can accrue for a single composite key (for example, due to price modification histories). A naive database join between transaction data (`djual`) and the master `barang` table would cause a Cartesian Explosion, multiplying the resulting rows and artificially inflating net turnover for generic items like "Lain Lain".
+- **Solution**: The engine performs aggregated queries using `GROUP BY KODE_BRG, ACC` combined with `MAX(HRG_BELI)` and `MAX(HARGA11)` for both master product retrieval and savings record checks. This guarantees that each unique product is evaluated exactly once, maintaining correct pricing without inflating turnover.
+- **Zero-Discount Injections**: Fictional injections are hardcoded to apply a zero discount (DISC1, DISC2, DISC3, and DISC_RP are bound to `0` via `VALUES 0` in the query insert structure). This ensures that fictional products do not generate unintended discount adjustments that could corrupt reports.
+
+### 7.2 Strict Tax Category Scoping
+- **Rule**: Fictional injections must be restricted to match the tax category of the sales receipts.
+- **Implementation**: The system queries receipts and candidate products by applying a strict `category_sql_filter` (e.g. `b.PAJAK IN (1, 3)` for PPN and `b.PAJAK = 2` for BTKP). Fictional taxable items are only injected into taxable receipts, and non-taxable items are only injected into non-taxable receipts, preventing illegal tax categorization mixing.
+
+### 7.3 Global Reduction Loop (Strict Anti-Delete Constraint)
+- **Rule**: Sales transaction items must never be completely deleted from the database.
+- **Implementation**: The global reduction loop calculates `max_qty_to_reduce = item['jumlah'] - 1`. If this value is <= 0, the item is skipped. Reduction is executed using a database `UPDATE` statement to modify quantity (enforcing a minimum quantity of 1) rather than a `DELETE` query. This preserves invoice sequences and prevents empty receipts, maintaining audit trail validity.

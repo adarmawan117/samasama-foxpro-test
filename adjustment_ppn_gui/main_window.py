@@ -40,7 +40,7 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         desktop = QDesktopWidget()
         available_geom = desktop.availableGeometry()
         
-        width = 1000
+        width = 1200
         # Leave a small margin for the title bar so it doesn't get pushed off-screen
         height = available_geom.height() - 80
         
@@ -159,13 +159,13 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         options_layout.addRow("Account Code:", self.combo_acc)
 
         # Date range inputs
-        self.tgl_awal = QDateEdit(QDate(2026, 3, 1))
+        self.tgl_awal = QDateEdit(QDate(2025, 12, 1))
         self.tgl_awal.setObjectName("tgl_awal")
         self.tgl_awal.setCalendarPopup(True)
         self.tgl_awal.setDisplayFormat("yyyy-MM-dd")
         self.tgl_awal.setEnabled(False)
 
-        self.tgl_akhir = QDateEdit(QDate(2026, 3, 31))
+        self.tgl_akhir = QDateEdit(QDate(2025, 12, 31))
         self.tgl_akhir.setObjectName("tgl_akhir")
         self.tgl_akhir.setCalendarPopup(True)
         self.tgl_akhir.setDisplayFormat("yyyy-MM-dd")
@@ -175,14 +175,14 @@ class ProsesAdjustmentPajakApp(QMainWindow):
         options_layout.addRow("End Date:", self.tgl_akhir)
 
         # Target PPN Input
-        self.target_ppn_input = QLineEdit("6000000000")
+        self.target_ppn_input = QLineEdit("4000000000")
         self.target_ppn_input.setObjectName("target_ppn_input")
         self.target_ppn_input.setValidator(QDoubleValidator(-999999999.0, 9999999999.0, 2, self))
         self.target_ppn_input.setEnabled(False)
         options_layout.addRow("Target Penjualan (PPN + Gunggung):", self.target_ppn_input)
 
         # Target BTKP Input
-        self.target_btkp_input = QLineEdit("600000000")
+        self.target_btkp_input = QLineEdit("3500000000")
         self.target_btkp_input.setObjectName("target_btkp_input")
         self.target_btkp_input.setValidator(QDoubleValidator(-999999999.0, 9999999999.0, 2, self))
         self.target_btkp_input.setEnabled(False)

@@ -63,7 +63,10 @@ python_test/
 ├── adjustment_ppn_core/               # Core backend packages (Framework agnostic)
 │   ├── calculator/
 │   │   ├── __init__.py
-│   │   └── adjustment.py              # Proportional reduction, priority draw, and global gap
+│   │   ├── adjustment.py              # Single-run legacy proportional adjustment logic
+│   │   ├── adjustment_core.py         # Sub-fases for addition, reduction, and global gap (grouped, anti-delete, strict scoping)
+│   │   ├── adjustment_dual.py         # Orchestrator running sequential PPN and BTKP dual loops with independent commits
+│   │   └── concurrency.py             # Helper classes for thread pools and lock controls
 │   ├── database/
 │   │   ├── __init__.py
 │   │   ├── connection.py              # SQLite/MySQL driver connections & UDF registration
@@ -173,27 +176,59 @@ Converts MySQL `CREATE TABLE` DDL statements to SQLite-compatible syntax:
 
 ## 5. Core Business Logic Scenarios
 
-The system performs transaction adjustments according to four primary logic scenarios to align the target tax database with a specified target PPN value.
+The system performs transaction adjustments according to four primary logic scenarios to align the target tax database with specified target tax values. To handle regulatory requirements cleanly, the system utilizes a **Double Engine Kalkulator** and a **Dual-Loop Architecture** to separate PPN (Value Added Tax) and BTKP (Tax-Free) calculations.
 
-### 5.1 Scenario 1: Target Gap Calculation
-The user inputs a **Target Final Omset (REAL JUAL)**. The system computes the Omset gap needed to reach this target:
-1. **Current Omset (REAL JUAL)**: Calculated by summing `(JUMLAH * HRG_JUAL)` for all items in both sales (`djual`) and returns (`drjual`), regardless of their tax status (`PAJAK`).
-2. **Gap Omset**: `Target Final Omset - Current Omset`.
-3. **Target Omset Change**: Simply equates to the `Gap Omset`.
+### 5.1 Scenario 1: Double Engine Gap Calculation & GUI Inputs
+The user inputs targets for both PPN and BTKP separately in the GUI:
+- **GUI Target Inputs**:
+  - `target_ppn_input`: Defines target turnover for PPN items.
+  - `target_btkp_input`: Defines target turnover for BTKP items.
+- **GUI Output Fields**:
+  - `current_ppn_omset_input` / `current_btkp_omset_input`: Shows the original gross sales (PPN + Gunggung vs BTKP).
+  - `current_ppn_retur_input` / `current_btkp_retur_input`: Shows the return totals for PPN vs BTKP.
+  - `current_net_ppn_input` / `current_net_btkp_input`: Shows the actual current net turnover (gross minus returns and discounts) for PPN vs BTKP.
 
-If `Target Omset Change < 0`, the system triggers **Scenario 2 (Tax Reduction)**. If `> 0`, it triggers **Scenario 3 (Tax Addition)**.
+- **Optimized Single-Scan SQL Query**:
+  In `adjustment_ppn_gui/workers.py`, the system calculates both PPN and BTKP net sales using a single SQL query using `SUM(CASE WHEN...)` to avoid Python memory overhead:
+  ```sql
+  SELECT 
+      SUM(CASE WHEN b.PAJAK IN (1, 3) THEN (d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH) ELSE 0 END),
+      SUM(CASE WHEN b.PAJAK = 2 THEN (d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH) ELSE 0 END)
+  FROM djual d
+  LEFT JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
+  WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= ... AND d.TGL_JUAL <= ...
+  ```
+  Here, PPN items are identified by `b.PAJAK IN (1, 3)` (PPN and Gunggung), and BTKP items are identified by `b.PAJAK = 2`. The query calculates the exact post-discount sales turnover in a single database pass, eliminating rounding errors and reducing memory usage.
 
-### 5.2 Scenario 2: Tax (PPN) Reduction (`proses_pengurangan_omset`)
-Used when target PPN needs to be reduced.
+### 5.2 Scenario 2: Dual-Loop Architecture & Independent Commits
+The execution logic in `adjustment_dual.py` processes PPN and BTKP in separate, sequential phases rather than concurrently. This isolation eliminates database lock contention and prevents memory bloat or access violations:
+1. **PPN Phase**:
+   - Queries current PPN net omset using `b.PAJAK IN (1, 3)`.
+   - Computes PPN gap: `target_ppn - current_ppn`.
+   - Runs `proses_pengurangan_fase` (if gap < 0) or `proses_penambahan_fase` (if gap > 0) targeting only PPN items.
+   - Commits changes to the target database immediately via `target_conn.commit()`.
+2. **BTKP Phase**:
+   - Queries current BTKP net omset using `b.PAJAK = 2`.
+   - Computes BTKP gap: `target_btkp - current_btkp`.
+   - Runs `proses_pengurangan_fase` (if gap < 0) or `proses_penambahan_fase` (if gap > 0) targeting only BTKP items.
+   - Commits changes to the target database immediately via `target_conn.commit()`.
+
+Committing at the end of each independent phase releases row and page locks on SQLite/MySQL early, ensuring no transaction deadlocks or access violations occur during the execution of the next phase.
+
+### 5.3 Scenario 3: Tax Reduction & Strict Anti-Delete Rule (`proses_pengurangan_fase`)
+Used when a target tax value (PPN or BTKP) needs to be reduced:
 - **Proportional Reduction**: Calculates the reduction factor $P = \text{target\_omset\_change} / \text{total\_taxable\_omset}$.
-- **Item Traversal**: Iterates through PPN-taxable items inside sales transactions (`djual`), sorted from bottom to top (`urutan DESC`).
-- **Anti-Empty Receipt Rule**: Ensures a receipt is never completely emptied. If an invoice contains only one item, it leaves at least 1 unit.
-- **Ledger Accrual**: The reduced quantity represents tax savings. The system records this quantity in `tabungan_dan_hutang`:
-  1. Checks if there is an active debt balance (`kurang`) for the product. If yes, it settles the debt first (Self-Healing).
+- **Item Traversal**: Iterates through tax-category specific items (filtered by `category_sql_filter`) inside sales transactions (`djual`), sorted from bottom to top (`urutan DESC`).
+- **Strict Anti-Delete Rule**: The system guarantees that no transaction row in `djual` is deleted, preserving the integrity of invoice sequences for tax audits (no empty receipts or gaps in invoice numbering).
+  - The maximum allowable quantity to reduce is bounded by `max_qty_to_reduce = item['jumlah'] - 1`.
+  - If `max_qty_to_reduce <= 0`, the system skips the item, enforcing a minimum quantity of 1 unit.
+  - Reduction is executed using a SQL `UPDATE djual SET jumlah = ...` statement instead of a `DELETE` query.
+- **Ledger Accrual**: The reduced quantity is saved in `tabungan_dan_hutang`:
+  1. Checks if there is an active debt balance (`kurang`) for that product. If yes, it settles the debt first (Self-Healing).
   2. Saves the remaining quantity as a savings record (`tambah`).
 
-### 5.3 Scenario 3: Priority Savings Draw (Tax Addition)
-When the target PPN requires transaction additions, the system first attempts to draw quantities from the savings ledger (`tabungan_dan_hutang` with type `'tambah'`). Candidates are sorted by price in descending order and evaluated according to three priority tiers:
+### 5.4 Scenario 4: Priority Savings Draw (Tax Addition)
+When the target tax requires transaction additions, the system first attempts to draw quantities from the savings ledger (`tabungan_dan_hutang` with type `'tambah'`). Candidates are filtered by the relevant tax category and sorted by price in descending order:
 - **Priority A (Exact Value Match)**: A savings record where the product price multiplied by its available quantity matches the target receipt addition amount exactly ($\text{price} \times \text{qty} == \text{target}$).
 - **Priority B (Exact Partial Match)**: A savings record where a subset quantity $k$ ($1 \le k \le \text{qty}$) matches the target receipt addition amount exactly ($\text{price} \times k == \text{target}$).
 - **Priority C (Closest below Target)**: Finds a quantity $k$ from a savings record that yields the highest total value without exceeding the target receipt addition amount.
@@ -203,14 +238,46 @@ When savings are drawn:
 - A record is added to `log_mutasi_tabungan`.
 - The quantities are added to the transaction in `djual`.
 
-### 5.4 Scenario 4: Fictional Injection (Fallback Tax Addition)
-If the savings ledger cannot satisfy the target addition for a receipt, the system falls back to injecting fictional product quantities. The system uses the **`HARGA11`** (smallest unit price) from the master `barang` table for any injected products.
-- **Global Exhaustion Pool**: Iterates through all available PPN-taxable products loaded into a globally shuffled pool. Once a product is selected and injected, it is **popped permanently** from the pool. If the pool is exhausted, it resets and rebuilds from scratch. This ensures high variance and prevents auditor pattern detection.
-- **QTY Randomization & Best Fit**: Finds the maximum possible quantity $max\_k$ for the selected product without exceeding the remaining target. Instead of injecting the maximum immediately, it randomizes the injection quantity $k = random.randint(1, max\_k)$. This forces the receipt to require multiple different products to fill the gap, simulating natural shopping behavior.
+### 5.5 Scenario 5: Fictional Injection & Strict Scoping (Fallback Tax Addition)
+If the savings ledger cannot satisfy the target addition for a receipt, the system falls back to injecting fictional product quantities.
+- **Strict Tax Category Scoping**: To comply with tax laws, fictional items must match the tax category of the receipt. The system uses a specific `category_sql_filter` when querying candidate receipts and when selecting fictional product candidates from the `barang` table:
+  - Fictional PPN items (tax category `b.PAJAK IN (1, 3)`) are injected only into receipts that already contain PPN transactions.
+  - Fictional BTKP items (tax category `b.PAJAK = 2`) are injected only into receipts that already contain BTKP transactions.
+- **Product Selection Query**: Candidate products are queried with a category filter and aggregated to prevent Cartesian explosions (see Section 5.7). The smallest unit price `HARGA11` is used.
+- **Global Exhaustion Pool**: Iterates through all available products in a globally shuffled pool. Used products are popped permanently from the pool. If empty, the pool resets.
+- **QTY Randomization**: Finds the maximum possible quantity $max\_k$ for the selected product without exceeding the remaining target, then randomizes the injection quantity $k = random.randint(1, max\_k)$ to simulate natural shopping behavior.
 - **Debt Accrual**: The injected quantity is recorded in `tabungan_dan_hutang` as a debt (`kurang`), which can be settled by future reductions (Self-Healing).
 
-### 5.5 Scenario 5: Global Gap Distribution
+### 5.6 Scenario 6: Global Gap Distribution
 If a residual global gap exists after primary reduction or addition, the system evenly distributes this leftover gap across 25% of the total available receipts (`total_receipts // 4`). This chunking mechanism ensures that no single receipt becomes abnormally bloated with extreme quantities, maintaining realistic transaction profiles.
+
+### 5.7 Bugfix: Master Data Duplication & 'Lain Lain' Omset Inflation
+In `adjustment_core.py`, database queries joining the transactions with the `barang` master data or `tabungan_dan_hutang` table could lead to a **Cartesian Explosion**. This occurs because products in the `barang` table use a composite key (`KODE_BRG`, `ACC`) and might contain duplicate entries due to price history. If joined directly without aggregation, the rows multiply, resulting in artificial omset inflation—especially for generic items like "Lain Lain".
+
+To resolve this duplication bug, the system employs the following strategies:
+1. **Aggregated Master Data Queries**:
+   When querying the master `barang` data for fictional injections, the query groups by product and account, taking the maximum of the prices:
+   ```sql
+   SELECT KODE_BRG, ACC, MAX(HRG_BELI), MAX(HARGA11), 0, 0, 0, 0,
+          MAX(HARGA11) as actual_price
+   FROM barang b
+   WHERE ACC IN ({placeholders}) AND {category_sql_filter} AND HARGA11 > 0
+   GROUP BY KODE_BRG, ACC
+   ```
+2. **Aggregated Savings Queries**:
+   Similarly, when querying `tabungan_dan_hutang` joined with `barang`, the query aggregates the records:
+   ```sql
+   SELECT t.urutan, t.qty, t.acc, t.kode_brg, 
+          MAX(b.HARGA11) as base_price,
+          MAX(b.HRG_BELI) as hrg_beli
+   FROM tabungan_dan_hutang t
+   JOIN barang b ON t.kode_brg = b.kode_brg AND t.acc = b.acc
+   WHERE ...
+   GROUP BY t.urutan, t.qty, t.acc, t.kode_brg
+   ```
+3. **Zero-Discount for Fictional Injections**:
+   To prevent discounts from introducing unexpected price calculations or inflating other items, the query for fictional items statically binds discount percentages and values to `0` (mapping to DISC1, DISC2, DISC3, DISC_RP as `0, 0, 0, 0`). This ensures that fictional sales are injected with a clean net price matching `HARGA11`.
+
 
 ---
 

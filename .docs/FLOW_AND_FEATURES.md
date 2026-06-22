@@ -20,17 +20,24 @@ Dokumen ini menjelaskan langkah-langkah penggunaan sistem penyesuaian PPN besert
    - **b. Membaca Data Cabang:** Sistem akan membaca daftar kode cabang (akun) dari tabel `accinv`. Jika tabel tersebut kosong, sistem memiliki kecerdasan buatan untuk beralih (*fallback*) mencari akun yang aktif langsung dari tabel `BARANG`.
    - **c. Pengaman Kegagalan:** Jika koneksi ke salah satu database gagal, sistem memunculkan pesan peringatan merah dan mengunci tombol proses demi menghindari kesalahan data.
 
-### 4. Menentukan Parameter dan Target Pajak PPN
-4. Pengguna memilih cabang yang akan disesuaikan, menentukan rentang tanggal transaksi, serta memasukkan angka target pajak yang ingin dicapai.
+### 4. Menentukan Parameter dan Target Pajak (Double Engine PPN & BTKP)
+4. Pengguna memilih cabang yang akan disesuaikan, menentukan rentang tanggal transaksi, serta memasukkan angka target pajak secara terpisah untuk PPN dan BTKP di UI.
    - **a. Pilihan Cabang (Akun):** Klik menu dropdown akun dan pilih cabang toko yang ingin disesuaikan. Kini tersedia pilihan **"ALL - A1 & A3 (Gabungan)"**.
    - **b. Batasan Tanggal:** Tentukan tanggal mulai dan tanggal akhir penyesuaian agar transaksi di luar rentang waktu tersebut tidak ikut terganggu.
-   - **c. Pengisian Target Pajak:** Masukkan nominal target pajak PPN yang diinginkan. Jika Anda memilih "ALL", target ini akan dipotong secara proporsional ke total omset gabungan A1 dan A3.
+   - **c. Pengisian Target Pajak Terpisah (Double Engine):** Masukkan nominal target secara independen pada kolom `target_ppn_input` (untuk barang kena pajak) dan `target_btkp_input` (untuk barang bebas pajak).
+   - **d. Tampilan Output Detail:** Sistem menampilkan total penjualan kotor asli, retur, dan penjualan bersih (netto) secara terpisah di UI untuk memantau status secara langsung:
+     - Penjualan Asli: `current_ppn_omset_input` dan `current_btkp_omset_input`
+     - Retur: `current_ppn_retur_input` dan `current_btkp_retur_input`
+     - Omset Bersih: `current_net_ppn_input` dan `current_net_btkp_input`
+   - **e. Kalkulasi Single-Scan Efisien:** Di balik layar (`workers.py`), sistem melakukan satu query database menggunakan fungsi `SUM(CASE WHEN...)` untuk menghitung omset PPN (filter `b.PAJAK IN (1, 3)`) dan BTKP (filter `b.PAJAK = 2`) sekaligus. Hal ini menghemat penggunaan memori RAM Python secara signifikan karena tidak perlu menarik ribuan baris data transaksi ke memori untuk dihitung secara manual.
 
-### 5. Menjalankan Penyesuaian (Adjustment)
-5. Pengguna menekan tombol **Proses** untuk memulai perhitungan dan perubahan transaksi di database target secara otomatis di latar belakang.
-   - **a. Deteksi Transaksi Ulang (Rerun):** Jika sistem mendeteksi bahwa penyesuaian pernah dijalankan sebelumnya pada rentang tanggal yang sama, sistem akan menampilkan pertanyaan konfirmasi. Pengguna dapat memilih untuk membatalkan proses atau menyetujui penulisan ulang data (rerun).
-   - **b. Pemulihan Otomatis (Rollback):** Jika pengguna menyetujui rerun, sistem akan melakukan pemulihan otomatis terlebih dahulu untuk mengembalikan jumlah barang di celengan ke posisi semula dan membersihkan transaksi sebelumnya agar tidak terjadi penumpukan data ganda.
-   - **c. Ekspor Laporan Akhir:** Setelah penyesuaian selesai, pengguna dapat menekan tombol **Export** untuk menyimpan seluruh detail tindakan pemotongan atau penambahan barang ke dalam file Excel/CSV sebagai arsip laporan.
+### 5. Menjalankan Penyesuaian (Arsitektur Dual-Loop & Commit Terisolasi)
+5. Pengguna menekan tombol **Proses** untuk memulai perhitungan dan perubahan transaksi di database target secara otomatis di latar belakang melalui mekanisme Dual-Loop.
+   - **a. Alur Eksekusi Terpisah (Dual-Loop):** Proses penyesuaian dijalankan dalam dua fase terisolasi secara sekuensial (fase PPN terlebih dahulu, diikuti fase BTKP) melalui modul `adjustment_dual.py`. Hal ini mencegah konflik penulisan data dan menjaga kebersihan logika program.
+   - **b. Commit Transaksi Mandiri:** Di setiap akhir fase (setelah siklus penyesuaian PPN selesai dan sebelum siklus BTKP dimulai), sistem memanggil `target_conn.commit()`. Komitmen memori terpisah ini melepaskan penguncian (row/page locks) pada database, mencegah masalah database terkunci (*lock contention*), mengurangi risiko kebocoran memori (*memory leak*), dan menghindari error fatal *access violation* pada sistem operasi.
+   - **c. Deteksi Transaksi Ulang (Rerun):** Jika sistem mendeteksi bahwa penyesuaian pernah dijalankan sebelumnya pada rentang tanggal yang sama, sistem akan menampilkan pertanyaan konfirmasi. Pengguna dapat memilih untuk membatalkan proses atau menyetujui penulisan ulang data (rerun).
+   - **d. Pemulihan Otomatis (Rollback):** Jika pengguna menyetujui rerun, sistem akan melakukan pemulihan otomatis terlebih dahulu untuk mengembalikan jumlah barang di celengan ke posisi semula dan membersihkan transaksi sebelumnya agar tidak terjadi penumpukan data ganda.
+   - **e. Ekspor Laporan Akhir:** Setelah penyesuaian selesai, pengguna dapat menekan tombol **Export** untuk menyimpan seluruh detail tindakan pemotongan atau penambahan barang ke dalam file Excel/CSV sebagai arsip laporan.
 
 ---
 
@@ -40,8 +47,8 @@ Sistem ini bekerja layaknya sebuah tim pencatat keuangan yang menggunakan metode
 
 ### 6. Potong Omset dan Celengan Barang
 6. Ketika target pajak yang Anda masukkan mengharuskan pengurangan omset penjualan, sistem akan memotong jumlah barang yang terjual di database target.
-   - **a. Cara Pemotongan:** Sistem akan memilah barang-barang yang dikenakan pajak, lalu mengurangi jumlahnya secara adil (proporsional) mulai dari transaksi yang paling bawah (terakhir) pada nota penjualan.
-   - **b. Aturan Anti-Nota Kosong:** Sistem menjaga agar tidak ada nota penjualan yang menjadi kosong atau terhapus total. Jika sebuah nota hanya berisi satu barang, sistem akan menyisakan minimal 1 unit barang agar nota tersebut tetap sah.
+   - **a. Cara Pemotongan:** Sistem akan memilah barang-barang yang sesuai kategori pajak (PPN vs BTKP), lalu mengurangi jumlahnya secara adil (proporsional) mulai dari transaksi yang paling bawah (terakhir) pada nota penjualan.
+   - **b. Aturan Anti-Hapus Kuantitas Minimal 1 (Global Reduction Loop):** Sistem menjamin tidak ada baris transaksi (`djual`) yang dihapus secara fisik (tidak menggunakan kueri `DELETE`). Pengurangan kuantitas dibatasi hingga batas aman minimal 1 unit (`max_qty_to_reduce = item['jumlah'] - 1`). Jika suatu baris barang sudah bernilai 1, sistem akan mengabaikannya agar nota tersebut tidak kosong atau nomor struk melompat (terputus).
    - **c. Celengan Barang:** Jumlah barang yang dipotong dari transaksi penjualan ini tidak dibuang begitu saja, melainkan disimpan ke dalam sistem "Celengan Barang" (tabungan) sebagai stok cadangan yang sewaktu-waktu bisa digunakan kembali jika kita perlu menaikkan omset.
 
 ### 7. Tambah Omset Menggunakan Celengan
@@ -53,7 +60,7 @@ Sistem ini bekerja layaknya sebuah tim pencatat keuangan yang menggunakan metode
 
 ### 8. Pinjam Barang (Hutang)
 8. Jika celengan barang kosong atau tidak mencukupi untuk memenuhi kebutuhan tambah omset, sistem akan menggunakan metode pinjam barang.
-   - **a. Suntikan Fiktif (Sistem Cabut Undian):** Sistem akan memilih barang kena pajak yang harganya cocok untuk menutupi kekurangan target tambahan nota, lalu menambahkannya ke nota penjualan tersebut. Pemilihan produk fiktif menggunakan **Global Exhaustion Pool** di mana seluruh produk PPN diacak, dan barang yang telah dipakai akan dibuang permanen dari putaran agar tidak muncul berulang di faktur yang sama atau berdekatan (menghindari deteksi auditor). Jika daftar habis terpakai, sistem otomatis mereset dan mengacak ulangnya.
+   - **a. Suntikan Fiktif dengan Strict Scoping (Sistem Cabut Undian):** Sistem memilih barang fiktif dengan kategori pajak yang sama persis dengan nota penjualan target (`category_sql_filter`). Barang fiktif berkategori PPN hanya disuntikkan ke struk PPN asli, dan barang BTKP hanya ke struk BTKP asli. Pemilihan produk fiktif menggunakan **Global Exhaustion Pool** di mana seluruh produk sesuai filter diacak, dan barang yang telah dipakai akan dibuang permanen dari putaran agar tidak muncul berulang di faktur yang sama atau berdekatan (menghindari deteksi auditor). Jika daftar habis terpakai, sistem otomatis mereset dan mengacak ulangnya.
    - **b. Kuantitas Teracak (Random QTY):** Untuk menambah kealamian, sistem tidak akan menggunakan 1 jenis barang untuk langsung menambal target sekaligus (misal langsung beli 10 unit). Sistem akan **mengacak kuantitas** (misal 2 atau 3 unit), lalu mencari barang jenis lain lagi untuk menambal sisa kekurangannya, menciptakan variasi pembelanjaan layaknya pembeli asli.
    - **c. Catatan Hutang:** Karena barang tersebut tidak diambil dari celengan stok riil, sistem akan mencatat tindakan ini sebagai "Hutang Barang" (minus) di buku kasir target. Ini berarti toko kita berutang stok barang tersebut pada laporan pajak.
 
@@ -91,8 +98,10 @@ Sistem ini bekerja layaknya sebuah tim pencatat keuangan yang menggunakan metode
     - **b. Fallback Akun Asal:** Jika barang tersebut tidak terdaftar di bawah akun `A1` pada master barang, sistem akan menggunakan akun asal dari nota transaksi tersebut (misalnya tetap dicatat sebagai `A3`).
     - **c. Pembersihan Bersih (Rollback):** Saat proses pemulihan (rollback) dijalankan untuk akun target tertentu (seperti `A3`), sistem akan mendeteksi barang-barang yang dialihkan ke akun `A1` tersebut secara otomatis. Sistem akan membersihkan riwayat mutasi celengan dan catatan hutang baik yang tercatat di `A3` maupun yang dialihkan ke `A1` untuk barang-barang terkait, sehingga data kembali bersih sempurna tanpa ada catatan celengan yang tertinggal.
 
-### 15. Logika Perhitungan Target Penjualan (REAL JUAL)
-15. Sistem mematuhi standar perhitungan terbaru yang langsung berpatokan pada Omset Kotor:
-    - **a. Perhitungan Omset Saat Ini:** Sistem akan menghitung total Omset Saat Ini (REAL JUAL) dengan menjumlahkan `HRG_JUAL * JUMLAH` untuk **seluruh** barang yang ada di struk, terlepas dari apakah barang tersebut terkena pajak (PAJAK = 1) ataupun tidak.
-    - **b. Selisih (GAP) Omset:** Angka yang Anda input di aplikasi kini adalah **Target Penjualan Akhir (REAL JUAL)**. Sistem akan mencari selisihnya langsung terhadap Omset Saat Ini, tanpa menggunakan perhitungan konversi PPN 11%.
-    - **c. Harga Suntikan Fiktif:** Jika sistem harus menyuntikkan barang baru (fiktif) ke dalam struk penjualan, sistem akan selalu mengambil patokan harga dari field **`HARGA11`** (satuan terkecil/pcs) di tabel master barang, dan memilih produk dengan mengacak para kandidat (kombinasi barang dan kuantitas) yang menghasilkan nilai matematis terdekat dengan celah yang harus ditutup, agar hasil injeksi tampak bervariasi dan natural.
+### 15. Logika Perhitungan Target Penjualan dan Penanganan Duplikasi
+15. Sistem mematuhi standar perhitungan terbaru yang langsung berpatokan pada Omset Kotor, serta mengamankan konsistensi data dari anomali duplikasi:
+    - **a. Perhitungan Omset Saat Ini:** Sistem menghitung total omset saat ini secara terpisah untuk PPN dan BTKP dengan menjumlahkan harga bersih setelah diskon bertingkat dan diskon rupiah melalui satu kueri efisien.
+    - **b. Selisih (GAP) Omset:** Angka target yang diinput di aplikasi kini langsung dibandingkan terhadap omset bersih per kategori pajak untuk mencari selisih (gap) penyesuaian.
+    - **c. Harga Suntikan Fiktif:** Jika sistem harus menyuntikkan barang baru (fiktif) ke dalam struk penjualan, sistem akan mengambil patokan harga dari field **`HARGA11`** (satuan terkecil/pcs) di tabel master barang.
+    - **d. Proteksi Duplikasi Master Barang (Bugfix 'Lain Lain'):** Untuk mencegah efek ledakan data (*Cartesian Explosion*) akibat duplikasi row / composite key pada tabel `barang` (di mana kombinasi `KODE_BRG` dan `ACC` bisa memiliki lebih dari satu baris karena riwayat perubahan harga), sistem menggunakan perintah kueri teragregasi dengan clause `GROUP BY KODE_BRG, ACC` dan `MAX(...)` saat memuat data master barang maupun data tabungan/hutang. Ini menghentikan bug membengkaknya omset barang generik seperti "Lain Lain".
+    - **e. Nilai Diskon Fiktif Nol (Diskon 0):** Barang fiktif yang disuntikkan akan secara eksplisit diatur untuk tidak memiliki diskon sama sekali (persentase DISC1, DISC2, DISC3, dan nilai rupiah DISC_RP diatur langsung ke angka `0` via `VALUES 0` di select list). Hal ini menghindari anomali naiknya omset fiktif akibat kalkulasi diskon tidak terduga pada item cadangan.

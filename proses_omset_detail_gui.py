@@ -61,11 +61,11 @@ class ProsesOmsetApp(QMainWindow):
         self.combo_acc = QComboBox()
         self.combo_acc.addItem("SEMUA ACC", "") # Default empty string for all ACC
         
-        self.tgl_awal = QDateEdit(QDate(QDate.currentDate().year(), 6, 1))
+        self.tgl_awal = QDateEdit(QDate(2025, 12, 1))
         self.tgl_awal.setCalendarPopup(True)
         self.tgl_awal.setDisplayFormat("yyyy-MM-dd")
 
-        self.tgl_akhir = QDateEdit(QDate.currentDate())
+        self.tgl_akhir = QDateEdit(QDate(2025, 12, 31))
         self.tgl_akhir.setCalendarPopup(True)
         self.tgl_akhir.setDisplayFormat("yyyy-MM-dd")
 
@@ -109,6 +109,7 @@ class ProsesOmsetApp(QMainWindow):
         records = self.logic.fetch_all("SELECT ACC, NAMA_ACC FROM accinv ORDER BY ACC")
         for rec in records:
             self.combo_acc.addItem(f"{rec['ACC']} - {rec['NAMA_ACC']}", rec['ACC'])
+        self.combo_acc.setCurrentIndex(1)
 
     def log_status(self, message):
         self.list_status.addItem(message)
