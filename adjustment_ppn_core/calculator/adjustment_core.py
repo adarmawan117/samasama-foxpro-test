@@ -225,6 +225,7 @@ def proses_pengurangan_fase(source_conn, target_conn, acc, start_date, end_date,
                 if item['jumlah'] > 0:
                     phase_items_by_receipt[item['f_jual']].append(item)
                     
+        total_phase_items = sum(len(items) for items in phase_items_by_receipt.values())
         pass3a_counter = 0
         # Pass 3a: Delete target items from multiple-item receipts (Rule 1)
         for r in sorted_receipts:
@@ -256,7 +257,7 @@ def proses_pengurangan_fase(source_conn, target_conn, acc, start_date, end_date,
                     total_reduced += val_reduced
                     
                     if log_callback and (pass3a_counter % 500 == 0):
-                        log_batcher = f"[{item['item_acc']}] Action: Safe Delete Item (Pass 3a) [{pass3a_counter}] | Receipt: {r} | Product: {item['kode_brg']} | Qty: {qty_reduced} | Value: {val_reduced:,.2f} | Remaining Gap: {remaining_gap:,.2f}"
+                        log_batcher = f"[{item['item_acc']}] Action: Safe Delete Item (Pass 3a) [{pass3a_counter}/{total_phase_items}] | Receipt: {r} | Product: {item['kode_brg']} | Qty: {qty_reduced} | Value: {val_reduced:,.2f} | Remaining Gap: {remaining_gap:,.2f}"
                         log_callback(log_batcher)
                         
                     target_acc = 'A1' if item['kode_brg'] in a1_products else item['item_acc']
@@ -296,7 +297,7 @@ def proses_pengurangan_fase(source_conn, target_conn, acc, start_date, end_date,
                         total_reduced += val_reduced
                         
                         if log_callback and (pass3b_counter % 100 == 0):
-                            log_batcher = f"[{item['item_acc']}] Action: Chronological Receipt Delete (Pass 3b) [{pass3b_counter}] | Receipt: {r} | Product: {item['kode_brg']} | Qty: {qty_reduced} | Value: {val_reduced:,.2f} | Remaining Gap: {remaining_gap:,.2f}"
+                            log_batcher = f"[{item['item_acc']}] Action: Chronological Receipt Delete (Pass 3b) [{pass3b_counter}/{total_phase_items}] | Receipt: {r} | Product: {item['kode_brg']} | Qty: {qty_reduced} | Value: {val_reduced:,.2f} | Remaining Gap: {remaining_gap:,.2f}"
                             log_callback(log_batcher)
                             
                         target_acc = 'A1' if item['kode_brg'] in a1_products else item['item_acc']
@@ -340,7 +341,7 @@ def proses_pengurangan_fase(source_conn, target_conn, acc, start_date, end_date,
                     total_reduced += val_reduced
                     
                     if log_callback and (pass3b_counter % 100 == 0):
-                        log_batcher = f"[{item['item_acc']}] Action: Safe Delete Item (Pass 3b) [{pass3b_counter}] | Receipt: {r} | Product: {item['kode_brg']} | Qty: {qty_reduced} | Value: {val_reduced:,.2f} | Remaining Gap: {remaining_gap:,.2f}"
+                        log_batcher = f"[{item['item_acc']}] Action: Safe Delete Item (Pass 3b) [{pass3b_counter}/{total_phase_items}] | Receipt: {r} | Product: {item['kode_brg']} | Qty: {qty_reduced} | Value: {val_reduced:,.2f} | Remaining Gap: {remaining_gap:,.2f}"
                         log_callback(log_batcher)
                         
                     target_acc = 'A1' if item['kode_brg'] in a1_products else item['item_acc']
