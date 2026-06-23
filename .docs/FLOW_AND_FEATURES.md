@@ -47,9 +47,10 @@ Sistem ini bekerja layaknya sebuah tim pencatat keuangan yang menggunakan metode
 
 ### 6. Potong Omset dan Celengan Barang
 6. Ketika target pajak yang Anda masukkan mengharuskan pengurangan omset penjualan, sistem akan memotong jumlah barang yang terjual di database target.
-   - **a. Cara Pemotongan:** Sistem akan memilah barang-barang yang sesuai kategori pajak (PPN vs BTKP), lalu mengurangi jumlahnya secara adil (proporsional) mulai dari transaksi yang paling bawah (terakhir) pada nota penjualan.
-   - **b. Aturan Anti-Hapus Kuantitas Minimal 1 (Global Reduction Loop):** Sistem menjamin tidak ada baris transaksi (`djual`) yang dihapus secara fisik (tidak menggunakan kueri `DELETE`). Pengurangan kuantitas dibatasi hingga batas aman minimal 1 unit (`max_qty_to_reduce = item['jumlah'] - 1`). Jika suatu baris barang sudah bernilai 1, sistem akan mengabaikannya agar nota tersebut tidak kosong atau nomor struk melompat (terputus).
-   - **c. Celengan Barang:** Jumlah barang yang dipotong dari transaksi penjualan ini tidak dibuang begitu saja, melainkan disimpan ke dalam sistem "Celengan Barang" (tabungan) sebagai stok cadangan yang sewaktu-waktu bisa digunakan kembali jika kita perlu menaikkan omset.
+   - **a. Cara Pemotongan (Pass 1 & 2):** Sistem akan memilah barang-barang yang sesuai kategori pajak (PPN vs BTKP), lalu mengurangi jumlahnya secara adil (proporsional) hingga batas aman minimal 1 unit.
+   - **b. Penghapusan Aman (Safe Deletion - Pass 3a):** Jika pengurangan belum memenuhi target gap dan barang sudah bernilai 1, baris barang tersebut **boleh dihapus** secara fisik dari database, asalkan di dalam struk/nota tersebut masih ada barang lain. Dengan demikian, struk tersebut tidak akan menjadi kosong.
+   - **c. Penghapusan Struk Berurut (Chronological Deletion - Pass 3b):** Jika sebuah struk hanya berisi 1 barang (barang tunggal), struk tersebut boleh dihapus **HANYA JIKA** ia adalah struk paling terakhir di bulan tersebut. Penghapusan akan dilakukan mundur (struk ke-n, lalu n-1, lalu n-2). Jika sistem menemukan struk barang tunggal yang berada di tengah-tengah bulan, sistem akan **otomatis berhenti (HALT)** dan memunculkan peringatan kritis agar nomor faktur pajak Anda tidak bolong di tengah.
+   - **d. Celengan Barang:** Jumlah barang yang dipotong atau dihapus dari transaksi penjualan ini tidak dibuang begitu saja, melainkan disimpan ke dalam sistem "Celengan Barang" (tabungan) sebagai stok cadangan yang sewaktu-waktu bisa digunakan kembali jika kita perlu menaikkan omset.
 
 ### 7. Tambah Omset Menggunakan Celengan
 7. Ketika target pajak mengharuskan penambahan omset penjualan, sistem akan mencoba menambahkan jumlah barang terjual pada nota tanpa membuat data baru dari nol.

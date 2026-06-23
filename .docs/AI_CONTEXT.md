@@ -215,15 +215,15 @@ The execution logic in `adjustment_dual.py` processes PPN and BTKP in separate, 
 
 Committing at the end of each independent phase releases row and page locks on SQLite/MySQL early, ensuring no transaction deadlocks or access violations occur during the execution of the next phase.
 
-### 5.3 Scenario 3: Tax Reduction & Strict Anti-Delete Rule (`proses_pengurangan_fase`)
+### 5.3 Scenario 3: Tax Reduction & Extreme Deletion Rules (`proses_pengurangan_fase`)
 Used when a target tax value (PPN or BTKP) needs to be reduced:
-- **Proportional Reduction**: Calculates the reduction factor $P = \text{target\_omset\_change} / \text{total\_taxable\_omset}$.
+- **Proportional Reduction (Pass 1)**: Calculates the reduction factor $P = \text{target\_omset\_change} / \text{total\_taxable\_omset}$.
 - **Item Traversal**: Iterates through tax-category specific items (filtered by `category_sql_filter`) inside sales transactions (`djual`), sorted from bottom to top (`urutan DESC`).
-- **Strict Anti-Delete Rule**: The system guarantees that no transaction row in `djual` is deleted, preserving the integrity of invoice sequences for tax audits (no empty receipts or gaps in invoice numbering).
-  - The maximum allowable quantity to reduce is bounded by `max_qty_to_reduce = item['jumlah'] - 1`.
-  - If `max_qty_to_reduce <= 0`, the system skips the item, enforcing a minimum quantity of 1 unit.
-  - Reduction is executed using a SQL `UPDATE djual SET jumlah = ...` statement instead of a `DELETE` query.
-- **Ledger Accrual**: The reduced quantity is saved in `tabungan_dan_hutang`:
+- **Global Reduction (Pass 2)**: Flattens all remaining items with QTY > 1 and randomly reduces them by 1 unit until the target is met or all items reach QTY 1. This uses a SQL `UPDATE djual SET jumlah = ...` statement to preserve rows.
+- **Safe Item Deletion (Pass 3a & 3b)**: If the gap is still large and all items have reached QTY 1, the system performs controlled physical deletion (`DELETE FROM djual`) using two strict integrity rules to prevent empty receipts or gaps in invoice numbering:
+  - **Rule 1 (Safe Deletion - Pass 3a)**: If a receipt contains multiple items, a target item can be deleted safely because the receipt will still retain at least one other item.
+  - **Rule 2 (Chronological Deletion - Pass 3b)**: If a receipt has only 1 item left, it can only be deleted if it is the absolute chronologically last active receipt of the month. Deletion cascades backwards ($n, n-1, n-2$). If the system encounters a single-item receipt in the middle of the month, a `HALT` mechanism is triggered to stop further deletion, protecting the invoice numbering sequence.
+- **Ledger Accrual**: The reduced/deleted quantity is saved in `tabungan_dan_hutang`:
   1. Checks if there is an active debt balance (`kurang`) for that product. If yes, it settles the debt first (Self-Healing).
   2. Saves the remaining quantity as a savings record (`tambah`).
 
@@ -295,8 +295,10 @@ MySQL and SQLite drivers must handle high-volume write operations carefully in a
 - The `_writer_loop` pops queries and executes them sequentially. This eliminates `database is locked` SQLite errors and prevents MySQL deadlocks/race conditions.
 - **CRITICAL**: The queue must be explicitly closed using `db_queue.stop_and_wait()` at the end of each processing phase. Failing to do so causes the daemon thread to leak into the next phase, which can corrupt the PyMySQL socket stream (resulting in `unpack_from` or `read of closed file` errors) if the main thread attempts to use the same connection concurrently.
 
-### 6.3 UI Log Batching (`LogBatcher`)
-Emitting thousands of PyQt5 signals per second from worker threads causes severe UI congestion and unresponsiveness. The `LogBatcher` intercepts log strings and groups them into batches (default size 20). Only when a batch is full (or when the process flushes at the end) does the worker emit the concatenated string via `progress_signal`, maintaining a smooth GUI experience.
+### 6.3 UI Log Batching & Iteration Denominators
+Emitting thousands of PyQt5 signals per second from worker threads causes severe UI congestion and unresponsiveness. 
+- **Modulo Counters**: In extreme deletion loops (Pass 3a/3b) and multithreaded operations, the system uses modulo arithmetic (`% 500 == 0` or `% 100 == 0`) to limit log emissions.
+- **Iteration Denominators**: Loops pre-calculate the total items (e.g. `total_phase_items`) to display clear progress indicators (e.g. `[129500/203750]`), preventing the user from assuming the application is frozen.
 
 ### 6.4 Multithreading Addition Architecture (Caching and Locking)
 The addition process (`proses_penambahan_omset`) has been refactored from a sequential database-bound loop into a highly optimized multithreaded architecture:

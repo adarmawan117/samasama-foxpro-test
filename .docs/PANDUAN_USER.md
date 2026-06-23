@@ -184,6 +184,8 @@ To ensure database consistency and prevent tax audit non-compliance, the adjustm
 - **Rule**: Fictional injections must be restricted to match the tax category of the sales receipts.
 - **Implementation**: The system queries receipts and candidate products by applying a strict `category_sql_filter` (e.g. `b.PAJAK IN (1, 3)` for PPN and `b.PAJAK = 2` for BTKP). Fictional taxable items are only injected into taxable receipts, and non-taxable items are only injected into non-taxable receipts, preventing illegal tax categorization mixing.
 
-### 7.3 Global Reduction Loop (Strict Anti-Delete Constraint)
-- **Rule**: Sales transaction items must never be completely deleted from the database.
-- **Implementation**: The global reduction loop calculates `max_qty_to_reduce = item['jumlah'] - 1`. If this value is <= 0, the item is skipped. Reduction is executed using a database `UPDATE` statement to modify quantity (enforcing a minimum quantity of 1) rather than a `DELETE` query. This preserves invoice sequences and prevents empty receipts, maintaining audit trail validity.
+### 7.3 Global Reduction Loop & Safe Deletion Rules
+- **Rule**: Sales transaction items should ideally not be deleted to preserve invoice sequences.
+- **Implementation**: The global reduction loop (Pass 2) bounds reduction to `max_qty_to_reduce = item['jumlah'] - 1` using `UPDATE` statements. However, if the gap is still unfulfilled, Pass 3 uses safe `DELETE` operations under two strict rules:
+  1. **Rule 1 (Safe Deletion)**: Deletes single-QTY items only if the receipt retains >1 total items.
+  2. **Rule 2 (Chronological Deletion)**: Deletes single-item receipts only if they are the last active receipt of the month (cascading backwards). If a single-item receipt is found mid-month, the deletion loops are forcibly halted to prevent holes in the sequence.
