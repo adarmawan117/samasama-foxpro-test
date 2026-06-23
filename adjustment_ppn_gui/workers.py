@@ -113,7 +113,7 @@ class CurrentValueCalculatorWorker(QThread):
                     SUM(CASE WHEN b.PAJAK IN (1, 3) THEN (d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH) ELSE 0 END),
                     SUM(CASE WHEN b.PAJAK = 2 THEN (d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH) ELSE 0 END)
                 FROM djual d
-                LEFT JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
+                LEFT JOIN (SELECT KODE_BRG, ACC, MIN(CASE WHEN PAJAK IN (1, 3) THEN PAJAK WHEN PAJAK = 2 THEN PAJAK ELSE 99 END) AS PAJAK FROM BARANG GROUP BY KODE_BRG, ACC) b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
                 WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if self.sandbox else '%s'} AND d.TGL_JUAL <= {'?' if self.sandbox else '%s'}
             """
             cursor.execute(djual_query, (*acc_tuple, self.start_date, self.end_date))
@@ -127,7 +127,7 @@ class CurrentValueCalculatorWorker(QThread):
                     SUM(CASE WHEN b.PAJAK IN (1, 3) THEN (d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH) ELSE 0 END),
                     SUM(CASE WHEN b.PAJAK = 2 THEN (d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH) ELSE 0 END)
                 FROM drjual d
-                LEFT JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
+                LEFT JOIN (SELECT KODE_BRG, ACC, MIN(CASE WHEN PAJAK IN (1, 3) THEN PAJAK WHEN PAJAK = 2 THEN PAJAK ELSE 99 END) AS PAJAK FROM BARANG GROUP BY KODE_BRG, ACC) b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
                 WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if self.sandbox else '%s'} AND d.TGL_JUAL <= {'?' if self.sandbox else '%s'}
             """
             cursor.execute(drjual_query, (*acc_tuple, self.start_date, self.end_date))

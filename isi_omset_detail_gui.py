@@ -156,7 +156,14 @@ class OmsetDetailApp(QMainWindow):
         query = """
         SELECT ACC, PERIODE, JENIS_PPN, JUAL, REAL_JUAL, R_JUAL, P_JUAL, (REAL_JUAL - R_JUAL) as NETJUAL,
                BELI, REAL_BELI, R_BELI, P_BELI, (REAL_BELI - R_BELI) as NETBELI, OPR, DATEOPR 
-        FROM SETOR_PAJAK_DETAIL ORDER BY PERIODE, JENIS_PPN
+        FROM SETOR_PAJAK_DETAIL 
+        ORDER BY 
+            PERIODE, 
+            CASE 
+                WHEN JENIS_PPN LIKE 'PPN%' THEN 1 
+                WHEN JENIS_PPN = 'BTKP' THEN 2 
+                ELSE 3 
+            END
         """
         records = self.db.fetch_all(query)
         

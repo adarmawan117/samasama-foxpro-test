@@ -5,17 +5,32 @@ import random
 def get_current_omset(source_conn, acc, start_date, end_date, category_sql_filter, is_sandbox):
     acc_tuple = acc if isinstance(acc, (list, tuple)) else (acc,)
     placeholders = ", ".join(["?"] * len(acc_tuple)) if is_sandbox else ", ".join(["%s"] * len(acc_tuple))
-    q = f"""
+    # Get Gross Sales
+    q_jual = f"""
         SELECT SUM((d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH))
         FROM djual d
-        LEFT JOIN barang b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
+        LEFT JOIN (SELECT KODE_BRG, ACC, MIN(CASE WHEN PAJAK IN (1, 3) THEN PAJAK WHEN PAJAK = 2 THEN PAJAK ELSE 99 END) AS PAJAK FROM BARANG GROUP BY KODE_BRG, ACC) b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
         WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if is_sandbox else '%s'} AND d.TGL_JUAL <= {'?' if is_sandbox else '%s'}
         AND {category_sql_filter}
     """
     c = source_conn.cursor()
-    c.execute(q, (*acc_tuple, start_date, end_date))
-    row = c.fetchone()
-    return float(row[0]) if row and row[0] is not None else 0.0
+    c.execute(q_jual, (*acc_tuple, start_date, end_date))
+    row_j = c.fetchone()
+    gross = float(row_j[0]) if row_j and row_j[0] is not None else 0.0
+
+    # Get Retur
+    q_retur = f"""
+        SELECT SUM((d.JUMLAH*d.HRG_JUAL*((100-d.DISC1)/100)*((100-d.DISC2)/100)*((100-d.DISC3)/100))-(d.DISC_RP*d.JUMLAH))
+        FROM drjual d
+        LEFT JOIN (SELECT KODE_BRG, ACC, MIN(CASE WHEN PAJAK IN (1, 3) THEN PAJAK WHEN PAJAK = 2 THEN PAJAK ELSE 99 END) AS PAJAK FROM BARANG GROUP BY KODE_BRG, ACC) b ON d.KODE_BRG = b.KODE_BRG AND d.ACC = b.ACC
+        WHERE d.ACC IN ({placeholders}) AND d.TGL_JUAL >= {'?' if is_sandbox else '%s'} AND d.TGL_JUAL <= {'?' if is_sandbox else '%s'}
+        AND {category_sql_filter}
+    """
+    c.execute(q_retur, (*acc_tuple, start_date, end_date))
+    row_r = c.fetchone()
+    retur = float(row_r[0]) if row_r and row_r[0] is not None else 0.0
+
+    return gross - retur
 
 
 def proses_adjustment_dual(source_conn, target_conn, acc, start_date, end_date, target_ppn, target_btkp, is_sandbox, max_workers=1, log_callback=None):

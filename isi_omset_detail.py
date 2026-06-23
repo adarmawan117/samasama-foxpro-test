@@ -56,6 +56,7 @@ class DatabaseHelperDetail:
         return cursor
 
     def fetch_all(self, query, params=None):
+        self.connection.commit() # Reset snapshot to get latest data
         cursor = self.connection.cursor()
         cursor.execute(query, params)
         return cursor.fetchall()
